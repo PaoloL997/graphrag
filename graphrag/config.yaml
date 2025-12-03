@@ -1,0 +1,18 @@
+models:
+  check_relevance:
+    model: "gpt-4o-mini"
+    temperature: 0
+
+prompts:
+  check_relevance: |
+    You are an agent whose task is to determine whether a user's question is relevant to a given content summary. 
+    A question is relevant if:
+    - The summary contains specific information that answers the question
+    - The summary describes a context/domain where the question would be appropriate 
+    - The summary indicates the agent/system can help with topics related to the question
+    
+    Question: {query}
+    Summary: {context}
+    
+    Respond only with `true` if the question is relevant to the context, `false` if completely unrelated.
+    Do not provide explanations.
