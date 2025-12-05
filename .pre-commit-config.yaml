@@ -1,0 +1,62 @@
+fail_fast: true
+
+repos:
+  - repo: local
+    hooks:
+      - id: jupyter-nb-clear-output
+        name: (jupyter-nb-clear-output) Clear jupyter notebook outputs
+        files: \.ipynb$
+        stages: [commit]
+        language: system
+        entry: jupyter nbconvert --ClearOutputPreprocessor.enabled=True --inplace
+  - repo: https://github.com/pre-commit/mirrors-prettier
+    rev: v2.7.1
+    hooks:
+      - id: prettier
+        name: (prettier) Reformat YAML files with prettier
+        types: [yaml]
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.9.7
+    hooks:
+      - id: ruff-format
+        types_or: [python, pyi, jupyter]
+        args: ["--config", "pyproject.toml"]
+      - id: ruff
+        types_or: [python, pyi, jupyter]
+        args: ["--config", "pyproject.toml", "--fix"]
+        exclude: ^(tests|scripts|notebooks|quadra/utils/tests)/
+  - repo: local
+    hooks:
+      - id: pylint
+        name: pylint
+        entry: pylint
+        language: system
+        types: [python]
+        args: [
+            "--rcfile=pylintrc", # Link to your config file
+          ]
+        exclude: ^(tests|scripts|notebooks)/
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy
+        entry: mypy
+        language: system
+        types: [python]
+        args:
+          [
+            "--non-interactive",
+            "--install-types",
+            "--follow-imports=silent",
+            "--ignore-missing-imports",
+            "--config-file=pyproject.toml",
+          ]
+        exclude: ^(tests|scripts|notebooks|quadra/utils/tests)/
+  - repo: local
+    hooks:
+      - id: interrogate
+        name: (interrogate) docstring coverage
+        language: python
+        types: [python]
+        pass_filenames: false
+        entry: interrogate
