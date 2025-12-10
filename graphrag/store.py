@@ -5,8 +5,10 @@ from langchain_openai import OpenAIEmbeddings
 from langchain_core.documents import Document
 from langchain_core.retrievers import BaseRetriever
 from langchain_milvus import BM25BuiltInFunction, Milvus
-
 from dotenv import load_dotenv
+
+from graphrag.reranker import CohereReranker
+
 
 load_dotenv()
 
@@ -19,8 +21,8 @@ class Store:
         uri: str,
         database: str,
         collection: str,
+        namespace: str,
         k: int = 4,
-        namespace: str | None = None,
         embedding_model: str | None = None,
     ):
         """Initialize the Milvus store.
@@ -30,8 +32,9 @@ class Store:
             database: The database name.
             collection: The collection name.
             k: The number of documents to retrieve. Defaults to 4.
-            namespace: The namespace to use. Defaults to "namespace".
+            namespace: The namespace to use.
             embedding_model: The embedding model to use. Defaults to "text-embedding-3-small".
+            reranker: Whether to use a reranker. Defaults to False.
 
         Raises:
             ConnectionError: If connection to Milvus fails.
@@ -41,7 +44,7 @@ class Store:
         self.database = database
         self.collection = collection
         self.k = k
-        self.namespace = namespace if namespace else "namespace"
+        self.namespace = namespace
         self.embedding_model = (
             embedding_model if embedding_model else "text-embedding-3-small"
         )
@@ -51,6 +54,8 @@ class Store:
 
         self.embed = OpenAIEmbeddings(model=self.embedding_model)
         self.vector_store = self._create_vstore()
+
+        self.reranker = CohereReranker(top_n=self.k)
 
     def _connect(self):
         """Connect to Milvus instance.
@@ -129,14 +134,21 @@ class Store:
         if weigths is None:
             weigths = [0.6, 0.4]
         retriever = self.vector_store.as_retriever(
-            search_kwargs={"k": self.k, "expr": f"namespace == '{self.namespace}'"},
+            search_kwargs={"k": self.k},
             ranker_type=ranker_type,
             ranker_params={"weights": weigths},
         )
         return retriever
 
-    def retrieve(self, query: str, score: bool = False):
-        """Similarity search.
+    def retrieve(
+        self,
+        query: str,
+        score: bool = False,
+    ):
+        """Similarity search across all documents.
+
+        Searches all documents in the store while preserving namespace information
+        in the returned documents for tracking their origin.
 
         Args:
             query: The query string.
@@ -144,16 +156,38 @@ class Store:
 
         Returns:
             list: List of documents or document-score tuples if score=True.
+                  Each document contains namespace metadata for tracking origin.
         """
-        expression = f"namespace == '{self.namespace}'"
         if score:
-            docs = self.vector_store.similarity_search_with_score(
-                query, k=self.k, expr=expression
-            )
+            docs = self.vector_store.similarity_search_with_score(query, k=self.k)
         else:
             docs = self.vector_store.similarity_search(
                 query,
                 k=self.k,
-                expr=expression,
             )
         return docs
+
+    def retrieve_with_reranker(self, query: str):
+        """Retrieve documents and rerank them using the Cohere Reranker.
+
+        Args:
+            query: The query string (must be a string, not a list).
+
+        Returns:
+            list: Reranked list of documents.
+        """
+        # Ensure query is a string
+        if isinstance(query, list):
+            query = query[0] if query else ""
+
+        query = str(query)
+
+        if not self.reranker:
+            self.reranker = CohereReranker(top_n=self.k)
+
+        # Get more candidates for reranking
+        docs = self.vector_store.similarity_search(query, k=self.k * 4)
+
+        # Rerank with proper string query
+        reranked_docs = self.reranker.rerank(query, docs)
+        return reranked_docs

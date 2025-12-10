@@ -11,12 +11,13 @@ class State(TypedDict):
 
     Attributes:
     - query: The user's query string.
-    - summary: Milvus collection summary
-    - relevant: True if query is relevant to the collection, False otherwise.
+    - summary: Summary of the document collection.
     - context: Retrieved context relevant to the query.
+    - response: Generated response from the LLM.
     """
 
     query: str
-    summary: str
-    relevant: Optional[bool]
+    summary: Optional[str]
     context: Optional[list[Document]]
+    response: Optional[str]
+    relevant: Optional[bool]
