@@ -28,6 +28,35 @@ TEXT TO SUMMARIZE:
 """
 
 
+def drop_collection(name: str, database: str):
+    """
+    Drop a collection from the specified database.
+
+    Args:
+        name: The name of the collection to drop.
+        database: The name of the database containing the collection.
+    Returns:
+        bool: True if the collection was dropped successfully, False otherwise.
+    """
+    try:
+        existing_dbs = db.list_database()
+        if database not in existing_dbs:
+            print(f"Database {database} does not exist.")
+            return False
+        db.using_database(database)
+        collections = db.list_collection()
+        if name not in collections:
+            print(f"Collection {name} does not exist in database {database}.")
+            return False
+        collection = Collection(name)
+        collection.drop()
+        print(f"Collection {name} dropped successfully from database {database}.")
+        return True
+    except MilvusException as e:
+        print(f"Error dropping collection {name} from database {database}: {e}")
+        return False
+
+
 class Store:
     """Milvus vector store for storing and retrieving documents."""
 
