@@ -65,7 +65,6 @@ class Store:
         uri: str,
         database: str,
         collection: str,
-        namespace: str,
         k: int = 4,
         embedding_model: str | None = None,
     ):
@@ -76,7 +75,6 @@ class Store:
             database: The database name.
             collection: The collection name.
             k: The number of documents to retrieve. Defaults to 4.
-            namespace: The namespace to use.
             embedding_model: The embedding model to use. Defaults to "text-embedding-3-small".
             reranker: Whether to use a reranker. Defaults to False.
 
@@ -88,7 +86,6 @@ class Store:
         self.database = database
         self.collection = collection
         self.k = k
-        self.namespace = namespace
         self.embedding_model = (
             embedding_model if embedding_model else "text-embedding-3-small"
         )
