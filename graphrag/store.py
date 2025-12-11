@@ -1,6 +1,7 @@
 """Vector store implementation using Milvus for document storage and retrieval."""
 
-from pymilvus import connections, db, MilvusException
+from pymilvus import connections, db, MilvusException, Collection
+from langchain.chat_models import init_chat_model
 from langchain_openai import OpenAIEmbeddings
 from langchain_core.documents import Document
 from langchain_core.retrievers import BaseRetriever
@@ -11,6 +12,20 @@ from graphrag.reranker import CohereReranker
 
 
 load_dotenv()
+
+SUMMARY_PROMPT = """
+You are a content analysis system. You will receive a text that is a concatenation of multiple entries from a collection. 
+
+Your task is to produce a single, comprehensive, and accurate summary of the text. The summary must:
+
+- ALWAYS Begin the text by explicitly stating that it is a summary (for example, start with "Summary:" or similar).
+- Include all main topics, key concepts, important details, definitions, relationships, events, or entities relevant for understanding the content.
+- Be complete and faithful to the input text.
+- Contain only the summary, without any additional explanations or commentary.
+
+TEXT TO SUMMARIZE:
+{INPUT_TEXT}
+"""
 
 
 class Store:
@@ -176,18 +191,74 @@ class Store:
         Returns:
             list: Reranked list of documents.
         """
-        # Ensure query is a string
         if isinstance(query, list):
-            query = query[0] if query else ""
-
-        query = str(query)
+            query = str(query[0]) if query else ""
 
         if not self.reranker:
             self.reranker = CohereReranker(top_n=self.k)
 
-        # Get more candidates for reranking
         docs = self.vector_store.similarity_search(query, k=self.k * 4)
-
-        # Rerank with proper string query
         reranked_docs = self.reranker.rerank(query, docs)
         return reranked_docs
+
+    @staticmethod
+    def _delete_old_summary(collection: Collection):
+        """Delete old summary entries from the collection.
+
+        Args:
+            collection: The Milvus collection instance.
+        """
+        try:
+            summary_check = collection.query(
+                expr='namespace == "summary"',
+                output_fields=["pk"],
+                limit=100,
+            )
+            if summary_check:
+                ids_to_delete = [item["pk"] for item in summary_check]
+                collection.delete(expr=f"pk in {ids_to_delete}")
+        except Exception as e:
+            print(f"Error deleting old summary entries: {e}")
+
+    def query(self, expression: str, fields: list | None = None, limit: int = 10):
+        collection = Collection(self.collection)
+        collection.load()
+        result = collection.query(
+            expr=expression,
+            output_fields=fields if fields else ["*"],
+            limit=limit,
+        )
+        return result
+
+    def summarize(self, model: str = "gpt-4.1-mini"):
+        """Generate a summary of the entire collection.
+
+        Args:
+            model: The language model to use for summarization. Defaults to "gpt-4.1-mini".
+        """
+        collection = Collection(self.collection)
+        collection.load()
+        self._delete_old_summary(collection)
+        results = collection.query(
+            expr="",
+            output_fields=["text"],
+            limit=1000,  # TODO: se hai più di 1000 documenti magari seleziona randomicamente
+        )
+        full_text = ""
+        for item in results:
+            full_text += item["text"] + "\n"
+
+        llm = init_chat_model(model)
+        summary = llm.invoke(SUMMARY_PROMPT.format(INPUT_TEXT=full_text)).content
+        doc = Document(
+            page_content=str(summary),
+            metadata={
+                "path": "N/A",
+                "page_start": "N/A",
+                "page_end": "N/A",
+                "type": "text",
+                "name": "collection_summary",
+                "namespace": "summary",
+            },
+        )
+        self.add([doc])

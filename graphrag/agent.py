@@ -23,12 +23,12 @@ CHECK_RELEVANCE = """
 You are an evaluator tasked with determining whether a user's question is relevant to a summary of a collection.
 Here is the summary of the collection: {collection_summary}
 Here is the user's question: {question}
-If the question is related to the content or main concepts present in the collection summary, consider it relevant.
-Provide a binary 'yes' or 'no' score to indicate whether the question is relevant to the collection.
+Consider the question relevant if:
+1. It is directly related to the content, main concepts, or topics present in the collection summary.
+2. It is a generic or open-ended question that asks for a summary, explanation, clarification, or overview of the content.
+Provide a binary 'yes' or 'no' score to indicate whether the question is relevant to the collection. 
+Only answer 'yes' or 'no'—do not add any explanation.
 """
-
-
-# TODO: devi per forza aggiungere un nodo per controllare se la domanda è inerente o meno al contesto
 
 
 class GraphRAG:
@@ -70,7 +70,7 @@ class GraphRAG:
         Returns:
             dict: Updated state with relevance boolean.
         """
-        summary = state["summary"]  # TODO: da implementare
+        summary = state["summary"]
         query = state["query"]
         response = self.llm.invoke(
             CHECK_RELEVANCE.format(collection_summary=summary, question=query)
@@ -88,7 +88,6 @@ class GraphRAG:
         """
         # Check if context is None
         if not state["context"]:
-            # TODO: da implementare
             context_str = ""
         else:
             context_str = "\n".join([doc.page_content for doc in state["context"]])
@@ -97,6 +96,20 @@ class GraphRAG:
         )
 
         return {"response": response.content}
+
+    def _not_relevant_response_node(self, state: State):
+        """Generate response for non-relevant queries.
+
+        Args:
+            state: The current state containing query.
+
+        Returns:
+            dict: Updated state with default response for non-relevant queries.
+        """
+        default_response = """
+        I'm sorry, but your question '{question}' does not seem to be relevant to the content of the collection.
+        """
+        return {"response": default_response.format(question=state["query"])}
 
     def _route_retrieval(self, state: State):
         """Route based on retrieval results.
@@ -114,7 +127,7 @@ class GraphRAG:
     def _route_relevant(self, state: State):
         if state["relevant"]:
             return "retrieve"
-        return END
+        return "not_relevant_end"
 
     def _compile_graph(self):
         """Compile the LangGraph workflow."""
@@ -124,26 +137,48 @@ class GraphRAG:
         graph_builder.add_node("relevant", self._relevant_node)
         graph_builder.add_node("retrieve", self._retrieve_node)
         graph_builder.add_node("generate", self._get_response_node)
+        graph_builder.add_node(
+            "not_relevant_response", self._not_relevant_response_node
+        )
 
         # Add edges
         graph_builder.set_entry_point("relevant")
         graph_builder.add_conditional_edges(
-            "relevant", self._route_relevant, {"retrieve": "retrieve", END: END}
+            "relevant",
+            self._route_relevant,
+            {"retrieve": "retrieve", "not_relevant_end": "not_relevant_response"},
         )
         graph_builder.add_conditional_edges(
             "retrieve", self._route_retrieval, {"generate": "generate", END: END}
         )
         graph_builder.add_edge("generate", END)
+        graph_builder.add_edge("not_relevant_response", END)
 
         return graph_builder.compile()
 
+    def get_summary(self):
+        """Retrieve the summary entry from the store."""
+        try:
+            qresult = self.store.query(
+                expression='namespace == "summary"', fields=["text"], limit=1
+            )
+            return qresult[0]["text"]
+        except Exception as e:
+            print(f"Error retrieving summary: {e}")
+            return None
+
     def run(self, query: str) -> str:
+        summary = self.get_summary()
+        if not summary:
+            self.store.summarize()
+            summary = self.get_summary()
+
         initial_state: State = {
             "query": query,
             "context": None,
             "response": None,
             "relevant": None,
-            "summary": None,
+            "summary": summary,
         }
         final_state = self.graph.invoke(initial_state)
-        return final_state["response"]
+        return final_state
