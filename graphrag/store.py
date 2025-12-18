@@ -1,6 +1,6 @@
 """Vector store implementation using Milvus for document storage and retrieval."""
 
-from pymilvus import connections, db, MilvusException, Collection
+from pymilvus import connections, db, MilvusException, Collection, utility
 from langchain.chat_models import init_chat_model
 from langchain_openai import OpenAIEmbeddings
 from langchain_core.documents import Document
@@ -28,32 +28,38 @@ TEXT TO SUMMARIZE:
 """
 
 
-def drop_collection(name: str, database: str):
+# def drop_collection(name: str, database: str, uri: str = "http://localhost:19530"):
+def drop_collection(uri: str, database: str, collection: str):
     """
     Drop a collection from the specified database.
 
     Args:
-        name: The name of the collection to drop.
+        uri: The URI of the Milvus instance.
+        collection: The name of the collection to drop.
         database: The name of the database containing the collection.
     Returns:
         bool: True if the collection was dropped successfully, False otherwise.
     """
     try:
+        # Establish connection to Milvus
+        host = uri.split("://")[1].split(":")[0]
+        port = int(uri.split(":")[-1])
+        connections.connect(host=host, port=port)
+
         existing_dbs = db.list_database()
         if database not in existing_dbs:
             print(f"Database {database} does not exist.")
             return False
         db.using_database(database)
-        collections = db.list_collection()
-        if name not in collections:
-            print(f"Collection {name} does not exist in database {database}.")
+        collections = utility.list_collections()
+        if collection not in collections:
+            print(f"Collection {collection} does not exist in database {database}.")
             return False
-        collection = Collection(name)
-        collection.drop()
-        print(f"Collection {name} dropped successfully from database {database}.")
+        col = Collection(collection)
+        col.drop()
         return True
     except MilvusException as e:
-        print(f"Error dropping collection {name} from database {database}: {e}")
+        print(f"Error dropping collection {collection} from database {database}: {e}")
         return False
 
 
