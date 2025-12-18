@@ -20,4 +20,4 @@ class State(TypedDict):
     summary: Optional[str]
     context: Optional[list[Document]]
     response: Optional[str]
-    relevant: Optional[bool]
+    # relevant: Optional[bool]
