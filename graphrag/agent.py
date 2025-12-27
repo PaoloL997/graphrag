@@ -15,6 +15,7 @@ GENERATE_RESPONSE = """
 You are an AI assistant that helps people find information. 
 Use the provided context to answer the question as best as you can. 
 If the context is empty or not relevant, say this explicitly.
+Always format your answer using Markdown.
 Question: {query}
 Context: {context}
 """
