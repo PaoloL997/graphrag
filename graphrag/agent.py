@@ -65,6 +65,7 @@ class GraphRAG:
         if not state["context"]:
             context_str = ""
         else:
+            # TODO:la context_str deve essere costruita in maniera più completa, in base a type
             context_str = "\n".join([doc.page_content for doc in state["context"]])
         response = self.llm.invoke(
             GENERATE_RESPONSE.format(query=state["query"], context=context_str)

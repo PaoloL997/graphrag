@@ -63,6 +63,38 @@ def drop_collection(uri: str, database: str, collection: str):
         return False
 
 
+def list_databases(uri: str) -> list[str]:
+    """
+    List all databases in the Milvus instance.
+
+    Args:
+        uri: The URI of the Milvus instance.
+    Returns:
+        list[str]: List of database names.
+    """
+    host = uri.split("://")[1].split(":")[0]
+    port = int(uri.split(":")[-1])
+    connections.connect(host=host, port=port)
+    return db.list_database()
+
+
+def list_collections(uri: str, database: str) -> list[str]:
+    """
+    List all collections in the specified database.
+
+    Args:
+        uri: The URI of the Milvus instance.
+        database: The name of the database.
+    Returns:
+        list[str]: List of collection names.
+    """
+    host = uri.split("://")[1].split(":")[0]
+    port = int(uri.split(":")[-1])
+    connections.connect(host=host, port=port)
+    db.using_database(database)
+    return utility.list_collections()
+
+
 class Store:
     """Milvus vector store for storing and retrieving documents."""
 
