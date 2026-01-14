@@ -78,6 +78,31 @@ def list_databases(uri: str) -> list[str]:
     return db.list_database()
 
 
+def create_database(uri: str, database: str) -> bool:
+    """
+    Create a new database in the Milvus instance.
+
+    Args:
+        uri: The URI of the Milvus instance.
+        database: The name of the database to create.
+    Returns:
+        bool: True if the database was created successfully, False otherwise.
+    """
+    try:
+        host = uri.split("://")[1].split(":")[0]
+        port = int(uri.split(":")[-1])
+        connections.connect(host=host, port=port)
+        existing_dbs = db.list_database()
+        if database in existing_dbs:
+            print(f"Database {database} already exists.")
+            return False
+        db.create_database(database)
+        return True
+    except MilvusException as e:
+        print(f"Error creating database {database}: {e}")
+        return False
+
+
 def list_collections(uri: str, database: str) -> list[str]:
     """
     List all collections in the specified database.
