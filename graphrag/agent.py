@@ -103,29 +103,29 @@ class GraphRAG:
 
         return graph_builder.compile()
 
-    def get_summary(self):
-        """Retrieve the summary entry from the store."""
-        try:
-            qresult = self.store.query(
-                expression='namespace == "summary"', fields=["text"], limit=1
-            )
-            return qresult[0]["text"]
-        except Exception as e:
-            print(f"Error retrieving summary: {e}")
-            return None
+    # def get_summary(self):
+    #    """Retrieve the summary entry from the store."""
+    #    try:
+    #        qresult = self.store.query(
+    #            expression='namespace == "summary"', fields=["text"], limit=1
+    #        )
+    #        return qresult[0]["text"]
+    #    except Exception as e:
+    #        print(f"Error retrieving summary: {e}")
+    #        return None
 
     def run(self, query: str) -> str:
-        summary = self.get_summary()
-        if not summary:
-            self.store.summarize()
-            summary = self.get_summary()
+        # summary = self.get_summary()
+        # if not summary:
+        #    self.store.summarize()
+        #    summary = self.get_summary()
 
         initial_state: State = {
             "query": query,
             "context": None,
             "response": None,
             # "relevant": None,
-            "summary": summary,
+            # "summary": summary,
         }
         final_state = self.graph.invoke(initial_state)
         return final_state
