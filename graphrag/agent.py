@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 
 from graphrag.state import State
 from graphrag.store import Store
+from graphrag.draw import ContextFromDraw
 
 
 load_dotenv()
@@ -62,6 +63,9 @@ class GraphRAG:
         self.llm = init_chat_model(model=llm)
         self.graph = self._compile_graph()
         self.rerank = rerank
+        self.draw = (
+            ContextFromDraw()
+        )  # TODO: la size minima per richiedere lo zooming deve essere parametrizzabile
 
     def _retrieve_node(self, state: State):
         """Retrieve documents from the Milvus store based on query.
@@ -76,6 +80,16 @@ class GraphRAG:
             context = self.store.retrieve(state["query"])
         else:
             context = self.store.retrieve_with_reranker(state["query"])
+        return {"context": context}
+
+    def _context_from_draw_node(self, state: State):
+        if not state["context"]:
+            return {"context": state["context"]}
+        context = state["context"][:]  # Create a copy to avoid mutation issues
+        for i, document in enumerate(context):
+            if document.metadata["type"] == "draw":
+                new_context = self.draw.run(document=document, query=state["query"])
+                context[i].page_content = new_context
         return {"context": context}
 
     def _evaluate_node(self, state: State):
@@ -143,12 +157,15 @@ class GraphRAG:
 
         # Add nodes
         graph_builder.add_node("retrieve", self._retrieve_node)
+        graph_builder.add_node("context_from_draw", self._context_from_draw_node)
         graph_builder.add_node("evaluate", self._evaluate_node)
+        # TODO: da aggiungere nodo per creare context a partire da draw
         graph_builder.add_node("generate", self._get_response_node)
 
         # Add edges
         graph_builder.set_entry_point("retrieve")
-        graph_builder.add_edge("retrieve", "evaluate")
+        graph_builder.add_edge("retrieve", "context_from_draw")
+        graph_builder.add_edge("context_from_draw", "evaluate")
         graph_builder.add_conditional_edges(
             "evaluate", self._route_retrieval, {"generate": "generate", END: END}
         )
@@ -162,7 +179,9 @@ class GraphRAG:
             qresult = self.store.query(
                 expression='namespace == "summary"', fields=["text"], limit=1
             )
-            return qresult[0]["text"]
+            if qresult and len(qresult) > 0:
+                return qresult[0]["text"]
+            return None
         except Exception as e:
             print(f"Error retrieving summary: {e}")
             return None
@@ -177,4 +196,4 @@ class GraphRAG:
             "response": None,
         }
         final_state = self.graph.invoke(initial_state)
-        return final_state
+        return final_state.get("response", "")
