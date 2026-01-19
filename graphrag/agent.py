@@ -1,5 +1,7 @@
 """Agent module for GraphRAG workflow orchestration."""
 
+import json
+
 from langgraph.graph import StateGraph, END
 from langchain.chat_models import init_chat_model
 from dotenv import load_dotenv
@@ -18,6 +20,30 @@ If the context is empty or not relevant, say this explicitly.
 Always format your answer using Markdown.
 Question: {query}
 Context: {context}
+"""
+
+EVALUATE_CONTEXT = """
+You are an Information Retrieval Specialist. Your task is to filter a list of documents based on their relevance to a specific user query.
+
+Task:
+- Evaluate each document provided in the context.
+- Determine if the document contains information necessary to answer the user query.
+- Identify the EXACT Primary Key (pk) for every relevant document from the context provided.
+
+Output Requirements:
+- Return ONLY a valid JSON list of strings containing the EXACT "pk" values of the relevant documents as they appear in the context.
+- The pk values must match exactly what is shown before the colon in each document (e.g., if you see "doc_123: content...", return "doc_123").
+- If no documents are relevant, return an empty list: [].
+- Do not include any explanations, greetings, or additional text.
+- Do not use placeholder values like "pk" - use the actual pk values from the documents.
+
+Question: {query}
+Context: {context}
+
+Examples of correct output format:
+["doc_001", "doc_005"]
+["material_spec_123"]
+[]
 """
 
 
@@ -51,6 +77,31 @@ class GraphRAG:
         else:
             context = self.store.retrieve_with_reranker(state["query"])
         return {"context": context}
+
+    def _evaluate_node(self, state: State):
+        """Evaluate and filter documents based on relevance to query."""
+        if not state["context"]:
+            return {"context": []}
+        docs_text = "\n\n".join(
+            f"{doc.metadata['pk']}: {doc.page_content}" for doc in state["context"]
+        )
+        evaluation_result = self.llm.invoke(
+            EVALUATE_CONTEXT.format(query=state["query"], context=docs_text)
+        )
+
+        try:
+            relevant_pks = json.loads(str(evaluation_result.content))
+
+            filtered_context = [
+                doc
+                for doc in state["context"]
+                if str(doc.metadata["pk"])
+                in [str(pk) for pk in relevant_pks]  # Converti entrambi a string
+            ]
+            return {"context": filtered_context}
+        except Exception as e:
+            print(f"Error parsing evaluation result: {e}")
+            return {"context": state["context"]}
 
     def _get_response_node(self, state: State):
         """Generate response using LLM based on query and context.
@@ -92,40 +143,38 @@ class GraphRAG:
 
         # Add nodes
         graph_builder.add_node("retrieve", self._retrieve_node)
+        graph_builder.add_node("evaluate", self._evaluate_node)
         graph_builder.add_node("generate", self._get_response_node)
 
         # Add edges
         graph_builder.set_entry_point("retrieve")
+        graph_builder.add_edge("retrieve", "evaluate")
         graph_builder.add_conditional_edges(
-            "retrieve", self._route_retrieval, {"generate": "generate", END: END}
+            "evaluate", self._route_retrieval, {"generate": "generate", END: END}
         )
         graph_builder.add_edge("generate", END)
 
         return graph_builder.compile()
 
-    # def get_summary(self):
-    #    """Retrieve the summary entry from the store."""
-    #    try:
-    #        qresult = self.store.query(
-    #            expression='namespace == "summary"', fields=["text"], limit=1
-    #        )
-    #        return qresult[0]["text"]
-    #    except Exception as e:
-    #        print(f"Error retrieving summary: {e}")
-    #        return None
+    def get_summary(self):
+        """Retrieve the summary entry from the store."""
+        try:
+            qresult = self.store.query(
+                expression='namespace == "summary"', fields=["text"], limit=1
+            )
+            return qresult[0]["text"]
+        except Exception as e:
+            print(f"Error retrieving summary: {e}")
+            return None
 
     def run(self, query: str) -> str:
-        # summary = self.get_summary()
-        # if not summary:
-        #    self.store.summarize()
-        #    summary = self.get_summary()
-
+        # Aggiungi sempre la summary ad uno store
+        if not self.get_summary():
+            self.store.summarize()
         initial_state: State = {
             "query": query,
             "context": None,
             "response": None,
-            # "relevant": None,
-            # "summary": summary,
         }
         final_state = self.graph.invoke(initial_state)
         return final_state
