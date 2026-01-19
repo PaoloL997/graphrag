@@ -83,8 +83,8 @@ class GraphRAG:
         return {"context": context}
 
     def _context_from_draw_node(self, state: State):
-        if not state["context"]:
-            return {"context": state["context"]}
+        if not state["context"] or len(state["context"]) == 0:
+            return {"context": []}
         context = state["context"][:]  # Create a copy to avoid mutation issues
         for i, document in enumerate(context):
             if document.metadata["type"] == "draw":
@@ -157,17 +157,20 @@ class GraphRAG:
 
         # Add nodes
         graph_builder.add_node("retrieve", self._retrieve_node)
-        graph_builder.add_node("context_from_draw", self._context_from_draw_node)
         graph_builder.add_node("evaluate", self._evaluate_node)
+        graph_builder.add_node("context_from_draw", self._context_from_draw_node)
+
         # TODO: da aggiungere nodo per creare context a partire da draw
         graph_builder.add_node("generate", self._get_response_node)
 
         # Add edges
         graph_builder.set_entry_point("retrieve")
-        graph_builder.add_edge("retrieve", "context_from_draw")
-        graph_builder.add_edge("context_from_draw", "evaluate")
+        graph_builder.add_edge("retrieve", "evaluate")
+        graph_builder.add_edge("evaluate", "context_from_draw")
         graph_builder.add_conditional_edges(
-            "evaluate", self._route_retrieval, {"generate": "generate", END: END}
+            "context_from_draw",
+            self._route_retrieval,
+            {"generate": "generate", END: END},
         )
         graph_builder.add_edge("generate", END)
 
