@@ -213,4 +213,4 @@ class GraphRAG:
             "response": None,
         }
         final_state = self.graph.invoke(initial_state)
-        return final_state.get("response", "")
+        return final_state
