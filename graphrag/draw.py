@@ -57,14 +57,21 @@ Please provide a direct answer to this question based on the technical drawing.
 class ContextFromDraw:
     """Extract context from technical drawings using TechDraw agent."""
 
-    def __init__(self, inches: float = 28.0):
+    def __init__(
+        self,
+        thinking_level: str = "low",
+        model: str = "gemini-3-flash-preview",
+        inches: float = 28.0,
+    ):
         """
         Initialize the ContextFromDraw agent.
 
         Args:
+            thinking_level: The thinking level for the TechDraw agent ("low", "medium", "high").
+            model: The Gemini model to use for the TechDraw agent.
             inches: Minimum dimension (in inches) to trigger zooming analysis.
         """
-        self.agent = TechDraw()
+        self.agent = TechDraw(thinking_level=thinking_level, model=model)
         self.inches = inches  # Min threshold for zooming
 
     @staticmethod

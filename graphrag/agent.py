@@ -52,21 +52,34 @@ Examples of correct output format:
 class GraphRAG:
     """GraphRAG agent for orchestrating document retrieval and response generation."""
 
-    def __init__(self, store: Store, llm: str, rerank: bool = False):
+    def __init__(
+        self,
+        store: Store,
+        llm: str,
+        rerank: bool = False,
+        draw_thinking_level: str = "low",
+        draw_model: str = "gemini-3-flash-preview",
+        draw_threshold_inches: float = 28.0,
+    ):
         """Initialize the agent.
 
         Args:
             store: The Milvus store instance for document retrieval.
             llm: The language model to use for response generation.
             rerank: Whether to use a reranker during retrieval.
+            thinking_level: The thinking level for the TechDraw agent ("low", "medium", "high").
+            model: The Gemini model to use for the TechDraw agent.
+            inches: Minimum dimension (in inches) to trigger zooming analysis.
         """
         self.store = store
         self.llm = init_chat_model(model=llm)
         self.graph = self._compile_graph()
         self.rerank = rerank
-        self.draw = (
-            ContextFromDraw()
-        )  # TODO: la size minima per richiedere lo zooming deve essere parametrizzabile
+        self.draw = ContextFromDraw(
+            thinking_level=draw_thinking_level,
+            model=draw_model,
+            inches=draw_threshold_inches,
+        )
 
     def _retrieve_node(self, state: State):
         """Retrieve documents from the Milvus store based on query.
