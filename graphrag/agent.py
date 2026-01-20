@@ -9,10 +9,11 @@ from dotenv import load_dotenv
 from graphrag.state import State
 from graphrag.store import Store
 from graphrag.draw import ContextFromDraw
-
+from graphrag.logger import get_logger
 
 load_dotenv()
 
+logger = get_logger(__name__)
 
 GENERATE_RESPONSE = """
 You are an AI assistant that helps people find information. 
@@ -29,7 +30,6 @@ You are an Information Retrieval Specialist. Your task is to filter a list of do
 Task:
 - Evaluate each document provided in the context.
 - Determine if the document contains information necessary to answer the user query.
-- **Where possible, prioritize selecting a single, most reliable and comprehensive source that sufficiently answers the query, rather than listing multiple redundant documents.**
 - Identify the EXACT Primary Key (pk) for every relevant document selected from the context provided.
 
 Output Requirements:
@@ -94,16 +94,34 @@ class GraphRAG:
             context = self.store.retrieve(state["query"])
         else:
             context = self.store.retrieve_with_reranker(state["query"])
+
+        logger.info("Retrieved %d documents from store.", len(context))
+
         return {"context": context}
 
     def _context_from_draw_node(self, state: State):
         if not state["context"] or len(state["context"]) == 0:
             return {"context": []}
         context = state["context"][:]  # Create a copy to avoid mutation issues
+        updated_pks = []
         for i, document in enumerate(context):
-            if document.metadata["type"] == "draw":
+            try:
+                doc_type = document.metadata.get("type")
+            except Exception:
+                doc_type = None
+            if doc_type == "draw":
                 new_context = self.draw.run(document=document, query=state["query"])
                 context[i].page_content = new_context
+                try:
+                    updated_pks.append(str(document.metadata.get("pk")))
+                except Exception:
+                    pass
+        logger.info(
+            "Updated context with draw information for documents: %s. Actual length of context: %d",
+            updated_pks,
+            len(context),
+        )
+
         return {"context": context}
 
     def _evaluate_node(self, state: State):
@@ -126,9 +144,14 @@ class GraphRAG:
                 if str(doc.metadata["pk"])
                 in [str(pk) for pk in relevant_pks]  # Converti entrambi a string
             ]
+            logger.info(
+                "Filtered context to %d relevant documents based on evaluation.",
+                len(filtered_context),
+            )
             return {"context": filtered_context}
         except Exception as e:
             print(f"Error parsing evaluation result: {e}")
+            logger.warning("Evaluation failed, proceeding with original context.")
             return {"context": state["context"]}
 
     def _get_response_node(self, state: State):
@@ -144,11 +167,11 @@ class GraphRAG:
         if not state["context"]:
             context_str = ""
         else:
-            # TODO:la context_str deve essere costruita in maniera più completa, in base a type
             context_str = "\n".join([doc.page_content for doc in state["context"]])
         response = self.llm.invoke(
             GENERATE_RESPONSE.format(query=state["query"], context=context_str)
         )
+        logger.info("Generated response using LLM for query: %s", state.get("query"))
 
         return {"response": response.content}
 
@@ -161,9 +184,9 @@ class GraphRAG:
         Returns:
             str: Next node to execute ('generate') or END.
         """
-        if state["context"] and len(state["context"]) > 0:
-            return "generate"
-        return END
+        context = state.get("context") or []
+        decision = "generate" if len(context) > 0 else END
+        return decision
 
     def _compile_graph(self):
         """Compile the LangGraph workflow."""
