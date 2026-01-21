@@ -30,6 +30,7 @@ You are an Information Retrieval Specialist. Your task is to filter a list of do
 Task:
 - Evaluate each document provided in the context.
 - Determine if the document contains information necessary to answer the user query.
+- If multiple documents have the type "draw", you must select ONLY the most significant or representative one. Do not include more than one document of type "draw" in the final list.
 - Identify the EXACT Primary Key (pk) for every relevant document selected from the context provided.
 
 Output Requirements:
@@ -37,14 +38,13 @@ Output Requirements:
 - The pk values must match exactly what is shown before the colon in each document (e.g., if you see "doc_123: content...", return "doc_123").
 - If no documents are relevant, return an empty list: [].
 - Do not include any explanations, greetings, or additional text.
-- Do not use placeholder values like "pk" - use the actual pk values from the documents.
 
 Question: {query}
 Context: {context}
 
 Examples of correct output format:
 ["doc_001"]
-["material_spec_123"]
+["material_spec_123", "drawing_ref_02"]
 []
 """
 
@@ -129,7 +129,8 @@ class GraphRAG:
         if not state["context"]:
             return {"context": []}
         docs_text = "\n\n".join(
-            f"{doc.metadata['pk']}: {doc.page_content}" for doc in state["context"]
+            f"{doc.metadata['pk']}: type: {doc.metadata.get('type', 'unknown')} content: {doc.page_content}"
+            for doc in state["context"]
         )
         evaluation_result = self.llm.invoke(
             EVALUATE_CONTEXT.format(query=state["query"], context=docs_text)
