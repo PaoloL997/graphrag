@@ -228,8 +228,8 @@ class GraphRAG:
 
     def run(self, query: str) -> str:
         # Aggiungi sempre la summary ad uno store
-        if not self.get_summary():
-            self.store.summarize()
+        # if not self.get_summary():
+        #    self.store.summarize()
         initial_state: State = {
             "query": query,
             "context": None,
