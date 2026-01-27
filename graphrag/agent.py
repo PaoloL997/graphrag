@@ -50,19 +50,20 @@ Task:
 - Identify the EXACT Primary Key (pk) for every relevant document selected from the context provided.
 
 Output Requirements:
-- Return ONLY a valid JSON list of strings containing the EXACT "pk" values of the relevant documents as they appear in the context.
-- The pk values must match exactly what is shown before the colon in each document (e.g., if you see "doc_123: content...", return "doc_123").
+- Return ONLY a valid JSON list of strings containing the EXACT "pk" values as they appear in the context.
+- CRITICAL: Do not add prefixes like "doc_" or suffixes if they are not part of the original pk.
+- The pk is the string immediately preceding the colon (e.g., if the context says "44582: content...", the pk is "44582").
 - If no documents are relevant, return an empty list: [].
-- Do not include any explanations, greetings, or additional text.
+- Do not include any explanations, headings, or markdown code blocks (unless the JSON is inside one).
 
 Question: {query}
 
 Context:
 {context}
 
-Examples of correct output format:
-["doc_001"]
-["material_spec_123", "drawing_ref_02"]
+Examples of correct output (assuming these pks exist in context):
+["44582"]
+["REF_9901", "SPEC_A1"]
 []
 """
 
@@ -202,6 +203,7 @@ class GraphRAG:
             )
 
             content = evaluation_result.content
+            print(f"Evaluation result content: {content}")
             if isinstance(content, str):
                 relevant_pks = self._parse_evaluation_result(content)
             elif isinstance(content, list):
@@ -461,15 +463,11 @@ class GraphRAG:
             "user_id": user_id,
         }
 
-        logger.info("Starting workflow for query: %s", query)
-
         try:
             final_state = self.graph.invoke(initial_state)
 
             if user_id and final_state.get("response"):
                 self._save_to_memory(user_id, query, final_state["response"])
-
-            logger.info("Workflow completed successfully.")
             return final_state
 
         except Exception as e:
