@@ -1,10 +1,10 @@
 """Agent module for GraphRAG workflow orchestration."""
 
 import json
-from typing import Optional
-
+from typing import Optional, Dict, List
 from langgraph.graph import StateGraph, END
 from langchain.chat_models import init_chat_model
+from langchain_core.documents import Document
 from dotenv import load_dotenv
 
 from graphrag.state import State
@@ -14,14 +14,13 @@ from graphrag.logger import get_logger
 from graphrag.memory import UserMemory
 
 load_dotenv()
-
 logger = get_logger(__name__)
 
-GENERATE_RESPONSE = """
-# Role
+GENERATE_RESPONSE_PROMPT = """# Role
 You are a helpful and natural AI Assistant. Your goal is to provide accurate answers by integrating retrieved technical information with the ongoing conversation history.
 
 # Data Sources
+
 ### Primary Context (Knowledge Base)
 {context}
 
@@ -31,7 +30,7 @@ You are a helpful and natural AI Assistant. Your goal is to provide accurate ans
 # Guidelines
 1. **Primary Source:** Use the "Primary Context" as your main factual reference.
 2. **Context Integration:** Use "Conversational Memory" to maintain flow and personalization.
-3. **Natural Language (CRITICAL):** Do NOT use phrases like "Based on the context provided," "According to the documents," or "In the memory." Speak directly to the user as a knowledgeable partner. 
+3. **Natural Language (CRITICAL):** Do NOT use phrases like "Based on the context provided," "According to the documents," or "In the memory." Speak directly to the user as a knowledgeable partner.
 4. **Authenticity:** If the information is not available in either source, politely inform the user without sounding mechanical.
 5. **Formatting:** Use Markdown (bolding, lists) for clarity, but keep the prose conversational.
 
@@ -42,8 +41,7 @@ Question: {query}
 (Provide a direct, natural answer without referencing your internal data sources)
 """
 
-EVALUATE_CONTEXT = """
-You are an Information Retrieval Specialist. Your task is to filter a list of documents based on their relevance to a specific user query.
+EVALUATE_CONTEXT_PROMPT = """You are an Information Retrieval Specialist. Your task is to filter a list of documents based on their relevance to a specific user query.
 
 Task:
 - Evaluate each document provided in the context.
@@ -58,7 +56,9 @@ Output Requirements:
 - Do not include any explanations, greetings, or additional text.
 
 Question: {query}
-Context: {context}
+
+Context:
+{context}
 
 Examples of correct output format:
 ["doc_001"]
@@ -91,7 +91,6 @@ class GraphRAG:
         """
         self.store = store
         self.llm = init_chat_model(model=llm)
-        self.graph = self._compile_graph()
         self.rerank = rerank
         self.draw = ContextFromDraw(
             thinking_level=draw_thinking_level,
@@ -99,9 +98,9 @@ class GraphRAG:
             inches=draw_threshold_inches,
         )
 
-        # Cache per le istanze UserMemory
-        # TODO: Sostituire con Redis per deployment production
-        self._memory_cache: dict[str, UserMemory] = {}
+        # Memory cache - TODO: Replace with Redis for production deployment
+        self._memory_cache: Dict[str, UserMemory] = {}
+        self.graph = self._compile_graph()
 
     def _get_or_create_memory(self, user_id: str) -> UserMemory:
         """Get or create a UserMemory instance for the given user.
@@ -119,7 +118,7 @@ class GraphRAG:
             )
         return self._memory_cache[user_id]
 
-    def _retrieve_node(self, state: State):
+    def _retrieve_node(self, state: State) -> Dict:
         """Retrieve documents from the Milvus store based on query.
 
         Args:
@@ -128,19 +127,24 @@ class GraphRAG:
         Returns:
             dict: Updated state with retrieved context.
         """
-        context = (
-            self.store.retrieve_with_reranker(state["query"])
-            if self.rerank
-            else self.store.retrieve(state["query"])
-        )
+        try:
+            context = (
+                self.store.retrieve_with_reranker(state["query"])
+                if self.rerank
+                else self.store.retrieve(state["query"])
+            )
 
-        if context is None:
-            context = []
+            if context is None:
+                context = []
 
-        logger.info("Retrieved %d documents from store.", len(context))
-        return {"context": context}
+            logger.info("Retrieved %d documents from store.", len(context))
+            return {"context": context}
 
-    def _context_from_draw_node(self, state: State):
+        except Exception as e:
+            logger.error("Error retrieving documents: %s", e)
+            return {"context": []}
+
+    def _context_from_draw_node(self, state: State) -> Dict:
         """Enhance context with draw-specific information.
 
         Args:
@@ -153,80 +157,124 @@ class GraphRAG:
         if not ctx:
             return {"context": []}
 
-        context = ctx[:]  # Copy to avoid mutation
+        context = list(ctx)
         updated_pks = []
 
         for i, document in enumerate(context):
             doc_type = document.metadata.get("type")
+
             if doc_type == "draw":
                 try:
                     new_context = self.draw.run(document=document, query=state["query"])
                     context[i].page_content = new_context
-                    updated_pks.append(str(document.metadata.get("pk", "unknown")))
+
+                    pk = document.metadata.get("pk", "unknown")
+                    updated_pks.append(str(pk))
+
                 except Exception as e:
-                    logger.error("Error processing draw document: %s", e)
+                    logger.error(
+                        "Error processing draw document (pk: %s): %s",
+                        document.metadata.get("pk", "unknown"),
+                        e,
+                    )
 
         if updated_pks:
             logger.info(
-                "Updated context with draw information for documents: %s. Total context length: %d",
+                "Updated context with draw information for documents: %s. "
+                "Total context length: %d",
                 updated_pks,
                 len(context),
             )
 
         return {"context": context}
 
-    def _evaluate_node(self, state: State):
-        """Evaluate and filter documents based on relevance to query.
-
-        Args:
-            state: The current state with context.
-
-        Returns:
-            dict: Updated state with filtered context.
-        """
-        if not state.get("context"):
-            return {"context": []}
-
-        # Prepare context for evaluation
+    def _evaluate_node(self, state: State) -> Dict:
+        """Evaluate and filter documents based on relevance to query."""
         ctx = state.get("context")
         if not ctx:
             return {"context": []}
 
-        docs_text = "\n\n".join(
-            f"{doc.metadata['pk']}: type: {doc.metadata.get('type', 'unknown')} content: {doc.page_content}"
-            for doc in ctx
-        )
+        docs_text = self._format_context_for_evaluation(ctx)
 
         try:
             evaluation_result = self.llm.invoke(
-                EVALUATE_CONTEXT.format(query=state["query"], context=docs_text)
+                EVALUATE_CONTEXT_PROMPT.format(query=state["query"], context=docs_text)
             )
-            relevant_pks = json.loads(str(evaluation_result.content))
 
-            # Filter context based on relevant PKs
-            relevant_pks_str = [str(pk) for pk in relevant_pks]
-            filtered_context = [
-                doc for doc in ctx if str(doc.metadata["pk"]) in relevant_pks_str
-            ]
+            content = evaluation_result.content
+            if isinstance(content, str):
+                relevant_pks = self._parse_evaluation_result(content)
+            elif isinstance(content, list):
+                relevant_pks = [str(pk) for pk in content]
+            else:
+                relevant_pks = []
+
+            filtered_context = self._filter_context_by_pks(ctx, relevant_pks)
 
             logger.info(
                 "Filtered context from %d to %d relevant documents.",
                 len(ctx),
                 len(filtered_context),
             )
+
             return {"context": filtered_context}
 
         except json.JSONDecodeError as e:
             logger.warning(
-                "Failed to parse evaluation result: %s. Using original context.",
-                e,
+                "Failed to parse evaluation result: %s. Using original context.", e
             )
             return {"context": ctx}
+
         except Exception as e:
             logger.error("Error during evaluation: %s. Using original context.", e)
             return {"context": ctx}
 
-    def _get_response_node(self, state: State):
+    def _format_context_for_evaluation(self, context: List[Document]) -> str:
+        """Format context documents for evaluation.
+
+        Args:
+            context: List of documents.
+
+        Returns:
+            str: Formatted context string.
+        """
+        return "\n\n".join(
+            f"{doc.metadata['pk']}: "
+            f"type: {doc.metadata.get('type', 'unknown')} "
+            f"content: {doc.page_content}"
+            for doc in context
+        )
+
+    def _parse_evaluation_result(self, content: str) -> List[str]:
+        """Parse evaluation result from LLM.
+
+        Args:
+            content: The LLM response content.
+
+        Returns:
+            List[str]: List of relevant PKs.
+
+        Raises:
+            json.JSONDecodeError: If parsing fails.
+        """
+        relevant_pks = json.loads(str(content))
+        return [str(pk) for pk in relevant_pks]
+
+    def _filter_context_by_pks(
+        self, context: List[Document], relevant_pks: List[str]
+    ) -> List[Document]:
+        """Filter context documents by relevant PKs.
+
+        Args:
+            context: List of documents.
+            relevant_pks: List of relevant primary keys.
+
+        Returns:
+            List[Document]: Filtered documents.
+        """
+        return [doc for doc in context if str(doc.metadata["pk"]) in relevant_pks]
+
+    def _get_response_node(self, state: State) -> Dict:
         """Generate response using LLM based on query and context.
 
         Args:
@@ -235,46 +283,77 @@ class GraphRAG:
         Returns:
             dict: Updated state with generated response.
         """
-        # Prepare context string
-        context_str = ""
-        ctx = state.get("context")
-        if ctx:
-            context_str = "\n\n".join([doc.page_content for doc in ctx])
+        context_str = self._prepare_context_string(state.get("context"))
+        memory_str = self._prepare_memory_string(state.get("user_id"), state["query"])
 
-        memory_str: str | None = None
-        uid = state.get("user_id")
-        if uid:
-            try:
-                memory = self._get_or_create_memory(uid)
-                memory_str = memory.get(state["query"])
-                logger.debug("Retrieved memory for user %s", uid)
-            except Exception as e:
-                logger.error("Error retrieving memory: %s", e)
-
-        # Generate response
-        response = self.llm.invoke(
-            GENERATE_RESPONSE.format(
-                query=state["query"],
-                context=context_str or "No relevant context found.",
-                memory=memory_str or "No previous conversation history.",
+        try:
+            response = self.llm.invoke(
+                GENERATE_RESPONSE_PROMPT.format(
+                    query=state["query"],
+                    context=context_str,
+                    memory=memory_str,
+                )
             )
-        )
 
-        logger.info("Generated response for query: %s", state["query"])
-        return {"response": response.content}
+            logger.info("Generated response for query: %s", state["query"])
+            return {"response": response.content}
 
-    def _route_retrieval(self, state: State):
+        except Exception as e:
+            logger.error("Error generating response: %s", e)
+            return {
+                "response": "I apologize, but I encountered an error while "
+                "generating a response. Please try again."
+            }
+
+    def _prepare_context_string(self, context: Optional[List[Document]]) -> str:
+        """Prepare context string from documents.
+
+        Args:
+            context: List of documents or None.
+
+        Returns:
+            str: Formatted context string.
+        """
+        if not context:
+            return "No relevant context found."
+
+        return "\n\n".join([doc.page_content for doc in context])
+
+    def _prepare_memory_string(self, user_id: Optional[str], query: str) -> str:
+        """Prepare memory string for the user.
+
+        Args:
+            user_id: The user identifier or None.
+            query: The current query.
+
+        Returns:
+            str: Formatted memory string.
+        """
+        if not user_id:
+            return "No previous conversation history."
+
+        try:
+            memory = self._get_or_create_memory(user_id)
+            memory_str = memory.get(query)
+            return memory_str or "No previous conversation history."
+
+        except Exception as e:
+            logger.error("Error retrieving memory: %s", e)
+            return "No previous conversation history."
+
+    def _route_retrieval(self, state: State) -> str:
         """Route based on retrieval results.
 
         Args:
             state: The current state with context.
 
         Returns:
-            str: Next node to execute ('generate') or END.
+            str: Next node to execute ('generate').
         """
         ctx = state.get("context")
-        has_context = bool(ctx and len(ctx) > 0)
-        return "generate" if has_context else END
+        if not ctx or len(ctx) == 0:
+            logger.info("No relevant context found for query: %s.", state.get("query"))
+        return "generate"
 
     def _compile_graph(self):
         """Compile the LangGraph workflow.
@@ -284,13 +363,11 @@ class GraphRAG:
         """
         graph_builder = StateGraph(State)
 
-        # Add nodes
         graph_builder.add_node("retrieve", self._retrieve_node)
         graph_builder.add_node("evaluate", self._evaluate_node)
         graph_builder.add_node("context_from_draw", self._context_from_draw_node)
         graph_builder.add_node("generate", self._get_response_node)
 
-        # Define workflow
         graph_builder.set_entry_point("retrieve")
         graph_builder.add_edge("retrieve", "evaluate")
         graph_builder.add_edge("evaluate", "context_from_draw")
@@ -311,13 +388,18 @@ class GraphRAG:
         """
         try:
             result = self.store.query(
-                expression='namespace == "summary"', fields=["text"], limit=1
+                expression='namespace == "summary"',
+                fields=["text"],
+                limit=1,
             )
+
             if result and len(result) > 0:
                 logger.info("Retrieved summary from store.")
                 return result[0]["text"]
+
             logger.info("No summary found in store.")
             return None
+
         except Exception as e:
             logger.error("Error retrieving summary: %s", e)
             return None
@@ -333,8 +415,10 @@ class GraphRAG:
         try:
             memory = self._get_or_create_memory(user_id)
             memory.add(query=query, response=response)
+            logger.debug("Saved query-response to memory for user: %s", user_id)
+
         except Exception as e:
-            logger.error("Error saving to memory: %s", e)
+            logger.error("Error saving to memory for user %s: %s", user_id, e)
 
     def clear_user_memory(self, user_id: str) -> bool:
         """Clear memory for a specific user (e.g., on disconnect).
@@ -352,13 +436,15 @@ class GraphRAG:
                 del self._memory_cache[user_id]
                 logger.info("Cleared memory for user: %s", user_id)
                 return True
+
             logger.warning("No memory found for user: %s", user_id)
             return False
+
         except Exception as e:
             logger.error("Error clearing memory for user %s: %s", user_id, e)
             return False
 
-    def run(self, query: str, user_id: Optional[str] = None) -> dict:
+    def run(self, query: str, user_id: Optional[str] = None) -> Dict:
         """Run the GraphRAG workflow.
 
         Args:
@@ -376,11 +462,21 @@ class GraphRAG:
         }
 
         logger.info("Starting workflow for query: %s", query)
-        final_state = self.graph.invoke(initial_state)
 
-        # Save to memory if user_id is provided
-        if user_id and final_state.get("response"):
-            self._save_to_memory(user_id, query, final_state["response"])
+        try:
+            final_state = self.graph.invoke(initial_state)
 
-        logger.info("Workflow completed successfully.")
-        return final_state
+            if user_id and final_state.get("response"):
+                self._save_to_memory(user_id, query, final_state["response"])
+
+            logger.info("Workflow completed successfully.")
+            return final_state
+
+        except Exception as e:
+            logger.error("Error during workflow execution: %s", e)
+            return {
+                "query": query,
+                "context": None,
+                "response": "An error occurred while processing your request.",
+                "user_id": user_id,
+            }
