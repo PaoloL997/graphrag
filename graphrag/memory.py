@@ -1,12 +1,3 @@
-"""
-- Utilizzerei il reranker anche tipo per recuperare solo le coppie query-response legate alla domanda
-Dove salvare:
-Possiamo creare un database memory
-Ogni collection corrisponde ad un utente
-Ogni documento nella collection è una coppia query-response
-la collection viene eliminata quando l'utente si disconnette (TODO: da capire come fare)
-"""
-
 from collections import deque
 from typing import Deque
 from langchain_core.documents import Document
