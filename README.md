@@ -14,6 +14,7 @@ GraphRAG implements a graph-based workflow that stores documents in a vector dat
 - **Graph Workflow**: LangGraph orchestrates the retrieval → generation pipeline
 - **Multi-namespace**: Organize documents by project/collection for better isolation
 - **Summarization**: Auto-generate collection summaries for context awareness
+- **Conversational Memory**: Supports both short-term (session) and long-term memory so the system can maintain context across multiple turns and sessions. This improves coherence for follow-up questions, enables limited personalization, and helps the agent remember important facts or user preferences when appropriate.
 
 ## Architecture
 
@@ -90,6 +91,7 @@ LangGraph-based workflow orchestration:
 - Generates responses using specified LLM (GPT, Claude, etc.)
 - Returns complete state with query, context, and response
 - Configurable retrieval parameters and reranking
+- Maintains conversational memory (short-term/session and optional long-term storage). Memory provides recent-turn context for coherent multi-turn dialogue and can persist selected information across sessions to improve continuity and personalization. Memory usage is integrated into retrieval and generation to surface relevant prior exchanges or saved facts when producing answers.
 
 ### Reranker (`graphrag.reranker.CohereReranker`)
 Optional component for improving retrieval quality:
