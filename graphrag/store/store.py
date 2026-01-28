@@ -8,7 +8,7 @@ from langchain_core.retrievers import BaseRetriever
 from langchain_milvus import BM25BuiltInFunction, Milvus
 from dotenv import load_dotenv
 
-from graphrag.reranker import CohereReranker
+from graphrag.store.reranker import CohereReranker
 
 
 load_dotenv()

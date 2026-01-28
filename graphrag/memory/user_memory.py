@@ -2,7 +2,7 @@ from typing import cast, List
 import redis
 
 from langchain_core.documents import Document
-from graphrag.store import Store, drop_collection
+from graphrag.store.store import Store, drop_collection
 
 LEN_SHORT_MEMORY = 5
 
