@@ -34,14 +34,20 @@ class GenerateNode:
             dict: Updated state with generated response.
         """
         context_str = self._prepare_context_string(state.get("context"))
+        query = (
+            str(state["refined_query"])
+            if state.get("refined_query")
+            else state["query"]
+        )
         memory_str = self.memory_manager.get_memory_string(
-            state.get("user_id"), state["query"]
+            user_id=state.get("user_id"),
+            query=query,
         )
 
         try:
             response = self.llm.invoke(
                 GENERATE_RESPONSE_PROMPT.format(
-                    query=state["query"],
+                    query=state["refined_query"],
                     context=context_str,
                     memory=memory_str,
                 )

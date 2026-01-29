@@ -75,9 +75,7 @@ class UserMemory:
             A combined string of relevant short-term and long-term memory, or None if no memory is found.
         """
         short_memory = self.short_term_memory()
-        print(f"Short-term memory retrieved: {short_memory}")
         long_memory = self.long_term_memory(query)
-        print(f"Long-term memory retrieved: {long_memory}")
         combined_memory = ""
         if short_memory:
             combined_memory += f"Short-term memory:\n{short_memory}\n\n"
@@ -93,5 +91,6 @@ class UserMemory:
                 database=self.long_memory_store.database,
                 collection=self.long_memory_store.collection,
             )
+            self.short_memory_store.flushdb()
         except Exception as e:
             raise e

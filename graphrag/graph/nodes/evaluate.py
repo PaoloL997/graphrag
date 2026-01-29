@@ -39,7 +39,9 @@ class EvaluateNode:
 
         try:
             evaluation_result = self.llm.invoke(
-                EVALUATE_CONTEXT_PROMPT.format(query=state["query"], context=docs_text)
+                EVALUATE_CONTEXT_PROMPT.format(
+                    query=state["refined_query"], context=docs_text
+                )
             )
 
             content = evaluation_result.content

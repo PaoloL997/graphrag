@@ -17,6 +17,7 @@ class State(TypedDict):
     """
 
     query: str
+    refined_query: Optional[str]
     context: Optional[list[Document]]
     response: Optional[str]
     user_id: Optional[str]

@@ -8,8 +8,16 @@ from dotenv import load_dotenv
 from graphrag.core.state import State
 from graphrag.store.store import Store
 from graphrag.memory.manager import MemoryManager
-from graphrag.graph.nodes import RetrieveNode, EvaluateNode, DrawNode, GenerateNode
+from graphrag.graph.nodes import (
+    RetrieveNode,
+    EvaluateNode,
+    DrawNode,
+    GenerateNode,
+    RefineNode,
+)
 from graphrag.utils.logger import get_logger
+
+# TODO: refinement va fatto solo se user_id specificato
 
 load_dotenv()
 logger = get_logger(__name__)
@@ -42,6 +50,7 @@ class GraphRAG:
         self.memory_manager = MemoryManager(uri=self.store.uri)
 
         # Initialize nodes
+        self.refine_node = RefineNode(self.llm, self.memory_manager)
         self.retrieve_node = RetrieveNode(store, rerank)
         self.evaluate_node = EvaluateNode(self.llm)
         self.draw_node = DrawNode(
@@ -75,12 +84,14 @@ class GraphRAG:
         """
         graph_builder = StateGraph(State)
 
+        graph_builder.add_node("refine", self.refine_node)
         graph_builder.add_node("retrieve", self.retrieve_node)
         graph_builder.add_node("evaluate", self.evaluate_node)
         graph_builder.add_node("context_from_draw", self.draw_node)
         graph_builder.add_node("generate", self.generate_node)
 
-        graph_builder.set_entry_point("retrieve")
+        graph_builder.set_entry_point("refine")
+        graph_builder.add_edge("refine", "retrieve")
         graph_builder.add_edge("retrieve", "evaluate")
         graph_builder.add_edge("evaluate", "context_from_draw")
         graph_builder.add_conditional_edges(
@@ -104,6 +115,7 @@ class GraphRAG:
         """
         initial_state: State = {
             "query": query,
+            "refined_query": None,
             "context": None,
             "response": None,
             "user_id": user_id,
@@ -120,6 +132,7 @@ class GraphRAG:
             logger.error("Error during workflow execution: %s", e)
             return {
                 "query": query,
+                "refined_query": None,
                 "context": None,
                 "response": "An error occurred while processing your request.",
                 "user_id": user_id,

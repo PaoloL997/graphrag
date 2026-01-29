@@ -68,8 +68,6 @@ class MemoryManager:
         try:
             memory = self.get_or_create(user_id)
             memory.add(query=query, response=response)
-            logger.debug("Saved query-response to memory for user: %s", user_id)
-
         except Exception as e:
             logger.error("Error saving to memory for user %s: %s", user_id, e)
 

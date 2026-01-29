@@ -47,11 +47,14 @@ class DrawNode:
         updated_pks = []
 
         for i, document in enumerate(context):
-            doc_type = document.metadata.get("type")
-
-            if doc_type == "draw":
+            if (
+                document.metadata.get("type") == "draw"
+                and state["refined_query"] is not None
+            ):
                 try:
-                    new_context = self.draw.run(document=document, query=state["query"])
+                    new_context = self.draw.run(
+                        document=document, query=state["refined_query"]
+                    )
                     context[i].page_content = new_context
 
                     pk = document.metadata.get("pk", "unknown")
