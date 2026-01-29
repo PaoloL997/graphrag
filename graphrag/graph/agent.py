@@ -17,8 +17,6 @@ from graphrag.graph.nodes import (
 )
 from graphrag.utils.logger import get_logger
 
-# TODO: refinement va fatto solo se user_id specificato
-
 load_dotenv()
 logger = get_logger(__name__)
 
@@ -48,6 +46,7 @@ class GraphRAG:
         self.store = store
         self.llm = init_chat_model(model=llm)
         self.memory_manager = MemoryManager(uri=self.store.uri)
+        self.memory_manager._clear_redis()  # Clear short-term memory on initialization
 
         # Initialize nodes
         self.refine_node = RefineNode(self.llm, self.memory_manager)

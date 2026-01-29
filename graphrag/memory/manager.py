@@ -1,6 +1,9 @@
 """Memory management module for GraphRAG."""
 
 from typing import Optional, Dict
+
+import redis
+
 from graphrag.memory.user_memory import UserMemory
 from graphrag.utils.logger import get_logger
 
@@ -71,26 +74,22 @@ class MemoryManager:
         except Exception as e:
             logger.error("Error saving to memory for user %s: %s", user_id, e)
 
-    def clear(self, user_id: str) -> bool:
-        """Clear memory for a specific user.
-
-        Args:
-            user_id: The user identifier.
-
-        Returns:
-            bool: True if memory was cleared successfully, False otherwise.
-        """
-        try:
-            if user_id in self._memory_cache:
-                memory = self._memory_cache[user_id]
+    def _clear_milvus(self) -> None:
+        """Clear all Milvus memory for all users."""
+        for user_id, memory in self._memory_cache.items():
+            try:
                 memory.delete()
-                del self._memory_cache[user_id]
-                logger.info("Cleared memory for user: %s", user_id)
-                return True
+                logger.info("Cleared Milvus memory for user: %s", user_id)
+            except Exception as e:
+                logger.error("Error clearing Milvus memory for user %s: %s", user_id, e)
 
-            logger.warning("No memory found for user: %s", user_id)
-            return False
-
+    def _clear_redis(self) -> None:
+        """Clear all Redis memory."""
+        try:
+            redis.StrictRedis(
+                host="localhost",
+                port=6379,
+                decode_responses=True,
+            ).flushall()
         except Exception as e:
-            logger.error("Error clearing memory for user %s: %s", user_id, e)
-            return False
+            logger.error("Error clearing Redis memory: %s", e)
