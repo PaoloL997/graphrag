@@ -222,6 +222,8 @@ class Store:
             docs: List of LangChain Documents to add.
         """
         _ = self.vector_store.add_documents(documents=docs)
+        collection_summary = self.summarize()
+        _ = self.vector_store.add_documents(documents=collection_summary)
 
     def get_retriever(
         self, ranker_type: str = "weighted", weigths: list[float] | None = None
@@ -299,7 +301,7 @@ class Store:
         """
         try:
             summary_check = collection.query(
-                expr='namespace == "summary"',
+                expr='text like "Summary:%"',
                 output_fields=["pk"],
                 limit=100,
             )
@@ -331,7 +333,7 @@ class Store:
         results = collection.query(
             expr="",
             output_fields=["text"],
-            limit=1000,  # TODO: se hai più di 1000 documenti magari seleziona randomicamente
+            limit=1000,
         )
         full_text = ""
         for item in results:
@@ -350,4 +352,4 @@ class Store:
                 "namespace": "summary",
             },
         )
-        self.add([doc])
+        return [doc]
