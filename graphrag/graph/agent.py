@@ -49,7 +49,9 @@ class GraphRAG:
         self.memory_manager._clear_redis()  # Clear short-term memory on initialization
 
         # Initialize nodes
-        self.refine_node = RefineNode(self.llm, self.memory_manager)
+        self.refine_node = RefineNode(
+            init_chat_model(model="gpt-4.1-nano", temperature=0.5), self.memory_manager
+        )
         self.retrieve_node = RetrieveNode(store, rerank)
         self.evaluate_node = EvaluateNode(self.llm)
         self.draw_node = DrawNode(

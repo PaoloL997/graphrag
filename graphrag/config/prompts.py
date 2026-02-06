@@ -52,7 +52,7 @@ Examples of correct output (assuming these pks exist in context):
 
 REFINE_QUERY_PROMPT = """
 ### Role
-You are an expert Query Refinement Assistant specializing in optimizing search queries for vector databases.
+You are an expert Query Refinement Assistant specializing in optimizing search queries for vector databases in the context of heat exchangers and industrial furnaces.
 
 ### Task
 Transform the user's question into an optimized search query by following these steps:
@@ -65,6 +65,7 @@ Transform the user's question into an optimized search query by following these 
 2. **Query Enhancement**
    - Preserve the original question structure and natural language
    - Enrich with 2-3 relevant synonyms or technical variants strategically placed
+   - Add industry-specific English terminology where applicable related to heat exchangers and industrial furnaces
    - Integrate keywords naturally within the sentence flow
    - Maintain grammatical correctness and readability
 
@@ -75,8 +76,11 @@ Transform the user's question into an optimized search query by following these 
    - NO explanations or meta-commentary
 
 ### Input Data
-**Conversation History:** {history}
-**Current Question:** {current_question}
+**Conversation History:**
+{history}
+
+**Current Question:**
+{current_question}
 
 ### Your Refined Query:
 """
