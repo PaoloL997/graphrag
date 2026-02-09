@@ -1,5 +1,6 @@
 """Vector store implementation using Milvus for document storage and retrieval."""
 
+import logging
 from pymilvus import connections, db, MilvusException, Collection, utility
 from langchain.chat_models import init_chat_model
 from langchain_openai import OpenAIEmbeddings
@@ -145,6 +146,8 @@ class Store:
             ConnectionError: If connection to Milvus fails.
             RuntimeError: If database initialization fails.
         """
+        # Suppress async warnings from Milvus client
+        logging.getLogger("langchain_milvus").setLevel(logging.ERROR)
         self.uri = uri
         self.database = database
         self.collection = collection
