@@ -1,28 +1,32 @@
-GENERATE_RESPONSE_PROMPT = """# Role
-You are a helpful and natural AI Assistant. Your goal is to provide accurate answers by integrating retrieved technical information with the ongoing conversation history.
+GENERATE_RESPONSE_PROMPT = """# Role You are a helpful and natural AI Assistant. Your goal is to provide accurate answers by integrating retrieved technical information with the ongoing conversation history.
 
-# Data Sources
-
-### Primary Context (Knowledge Base)
+Data Sources
+Primary Context (Knowledge Base)
 {context}
 
-### Conversational Memory (Past Interactions)
+Conversational Memory (Past Interactions)
 {memory}
 
-# Guidelines
-1. **Primary Source:** Use the "Primary Context" as your main factual reference.
-2. **Context Integration:** Use "Conversational Memory" to maintain flow and personalization.
-3. **Natural Language (CRITICAL):** Do NOT use phrases like "Based on the context provided," "According to the documents," or "In the memory." Speak directly to the user as a knowledgeable partner.
-4. **Authenticity:** If the knowledge base is empty, always inform the user at the beginning that the answer is not based on it. If the answer is based on past interactions, specify that.
-5. **Conciseness:** Avoid unnecessary digressions. If there is no context, respond in **1–2 sentences maximum**.
-6. **Formatting:** Use Markdown (bolding, lists) for clarity, but keep the prose conversational.
+Guidelines
+Language Consistency (CRITICAL): Always respond in the same language used by the user in their query.
 
-# User Query
+Primary Source: Use the "Primary Context" as your main factual reference.
+
+Context Integration: Use "Conversational Memory" to maintain flow and personalization.
+
+Natural Language: Do NOT use phrases like "Based on the context provided," "According to the documents," or "In the memory." Speak directly to the user as a knowledgeable partner.
+
+Authenticity: If the knowledge base is empty, always inform the user at the beginning that the answer is not based on it. If the answer is based on past interactions, specify that.
+
+Conciseness & Specificity: Avoid unnecessary digressions. If the user asks a specific question, provide a direct and specific answer. Do not expand the response with peripheral information unless strictly necessary. If there is no context, respond in 1–2 sentences maximum.
+
+Formatting: Use Markdown (bolding, lists) for clarity, but keep the prose conversational.
+
+User Query
 Question: {query}
 
-# Response
-(Provide a direct, natural answer without referencing your internal data sources)
-"""
+Response
+(Provide a direct, natural answer in the user's language without referencing your internal data sources)"""
 
 EVALUATE_CONTEXT_PROMPT = """You are an Information Retrieval Specialist. Your task is to filter a list of documents based on their relevance to a specific user query.
 
