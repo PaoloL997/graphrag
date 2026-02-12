@@ -228,6 +228,24 @@ class Store:
         collection_summary = self.summarize()
         _ = self.vector_store.add_documents(documents=collection_summary)
 
+    def delete(self, namespace: str):
+        """Delete documents from a specific namespace.
+        Args:
+            namespace: The namespace from which to delete documents.
+        """
+        try:
+            docs = self.query(
+                expression=f'namespace == "{namespace}"',
+                fields=["pk"],
+                limit=1000,  # TODO: valuta se aumentare
+            )
+            if docs:
+                ids_to_delete = [item["pk"] for item in docs]
+                collection = Collection(self.collection)
+                collection.delete(expr=f"pk in {ids_to_delete}")
+        except Exception as e:
+            print(f"Error deleting documents in namespace {namespace}: {e}")
+
     def get_retriever(
         self, ranker_type: str = "weighted", weigths: list[float] | None = None
     ) -> BaseRetriever:
