@@ -15,9 +15,9 @@ class RetrieveNode:
     def __call__(self, state: State) -> Dict:
         try:
             context = (
-                self.store.retrieve_with_reranker(state["query"])
+                self.store.retrieve_with_reranker(state["refined_query"])
                 if self.rerank
-                else self.store.retrieve(state["query"])
+                else self.store.retrieve(state["refined_query"])
             )
 
             if context is None:

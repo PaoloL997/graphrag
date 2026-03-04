@@ -47,13 +47,13 @@ class GenerateNode:
         try:
             response = self.llm.invoke(
                 GENERATE_RESPONSE_PROMPT.format(
-                    query=state["refined_query"],
+                    query=query,
                     context=context_str,
                     memory=memory_str,
                 )
             )
 
-            logger.info("Generated response for query: %s", state["query"])
+            logger.info("Generated response for query: %s", query)
             return {"response": response.content}
 
         except Exception as e:
