@@ -59,8 +59,8 @@ class GenerateNode:
         except Exception as e:
             logger.error("Error generating response: %s", e)
             return {
-                "response": "I apologize, but I encountered an error while "
-                "generating a response. Please try again."
+                "response": "Si è verificato un errore durante la generazione della risposta. "
+                "Riprova."
             }
 
     def _prepare_context_string(self, context: Optional[List[Document]]) -> str:
