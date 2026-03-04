@@ -2,9 +2,7 @@ import logging
 from typing import Optional
 
 
-def get_logger(
-    name: Optional[str] = None, level: int = logging.WARNING
-) -> logging.Logger:
+def get_logger(name: Optional[str] = None, level: int = logging.INFO) -> logging.Logger:
     """Return a configured logger for the given name.
 
     The logger is configured with a StreamHandler and a simple formatter only
