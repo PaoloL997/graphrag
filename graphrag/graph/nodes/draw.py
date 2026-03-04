@@ -1,9 +1,13 @@
 """Draw context enhancement node."""
 
 from typing import Dict
+
+from langchain_core.documents import Document
+
 from graphrag.core.state import State
 from graphrag.core.draw import ContextFromDraw
 from graphrag.utils.logger import get_logger
+
 
 logger = get_logger(__name__)
 
@@ -45,6 +49,7 @@ class DrawNode:
 
         context = list(ctx)
         updated_pks = []
+        failed_pks = []
 
         for i, document in enumerate(context):
             if (
@@ -55,17 +60,33 @@ class DrawNode:
                     new_context = self.draw.run(
                         document=document, query=state["refined_query"]
                     )
-                    context[i].page_content = new_context
 
+                    context[i] = Document(
+                        page_content=new_context,
+                        metadata=document.metadata,
+                    )
                     pk = document.metadata.get("pk", "unknown")
                     updated_pks.append(str(pk))
 
                 except Exception as e:
+                    pk = document.metadata.get("pk", "unknown")
                     logger.error(
-                        "Error processing draw document (pk: %s): %s",
-                        document.metadata.get("pk", "unknown"),
+                        "Error processing draw document (pk: %s): %s — removing from context.",
+                        pk,
                         e,
                     )
+                    failed_pks.append(pk)
+
+        if failed_pks:
+            context = [
+                doc
+                for doc in context
+                if str(doc.metadata.get("pk", "unknown"))
+                not in [str(p) for p in failed_pks]
+            ]
+            logger.info(
+                "Removed %d failed draw document(s) from context.", len(failed_pks)
+            )
 
         if updated_pks:
             logger.info(

@@ -285,12 +285,16 @@ class Store:
             list: List of documents or document-score tuples if score=True.
                   Each document contains namespace metadata for tracking origin.
         """
+        _filter = 'namespace != "summary"'
         if score:
-            docs = self.vector_store.similarity_search_with_score(query, k=self.k)
+            docs = self.vector_store.similarity_search_with_score(
+                query, k=self.k, expr=_filter
+            )
         else:
             docs = self.vector_store.similarity_search(
                 query,
                 k=self.k,
+                expr=_filter,
             )
         return docs
 
@@ -309,7 +313,9 @@ class Store:
         if not self.reranker:
             self.reranker = CohereReranker(top_n=self.k)
 
-        docs = self.vector_store.similarity_search(query, k=self.k * 4)
+        docs = self.vector_store.similarity_search(
+            query, k=self.k * 4, expr='namespace != "summary"'
+        )
         reranked_docs = self.reranker.rerank(query, docs)
         return reranked_docs
 
