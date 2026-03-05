@@ -35,9 +35,16 @@ EVALUATE_CONTEXT_PROMPT = """You are an Information Retrieval Specialist. Your t
 
 Task:
 - Evaluate each document provided in the context.
-- Determine if the document contains information necessary to answer the user query.
-- If multiple documents have the type "draw", you must select ONLY the most significant or representative one. Do not include more than one document of type "draw" in the final list.
-- Identify the EXACT Primary Key (pk) for every relevant document selected from the context provided.
+- Include a document if it is potentially relevant or useful to answer the user query, even partially.
+- When in doubt, ALWAYS include the document — prefer false positives over false negatives.
+- Exclude a document ONLY if it is clearly unrelated to the topic of the query (different subject, different component, different system).
+- If multiple documents have the type "draw", keep ONLY the most representative one.
+- Identify the EXACT Primary Key (pk) for every document to include.
+
+Relevance criteria (include if any apply):
+- Mentions entities, codes, tags, or components referenced in the query.
+- Contains technical data or specifications related to the query topic.
+- Provides context that could help interpret or complement other included documents.
 
 Output Requirements:
 - Return ONLY a valid JSON list of strings containing the EXACT "pk" values as they appear in the context.
