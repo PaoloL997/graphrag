@@ -6,12 +6,17 @@ from langchain_openai import OpenAIEmbeddings
 from langchain_core.documents import Document
 from langchain_core.retrievers import BaseRetriever
 from langchain_milvus import BM25BuiltInFunction, Milvus
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from dotenv import load_dotenv
 
 from graphrag.store.reranker import CohereReranker
 
 
 load_dotenv()
+
+_MILVUS_VARCHAR_MAX = 65535
+_SAFE_CHUNK_SIZE = 60_000
+_CHUNK_OVERLAP = 200
 
 
 # def drop_collection(name: str, database: str, uri: str = "http://localhost:19530"):
@@ -202,13 +207,40 @@ class Store:
         )
         return mstore
 
+    @staticmethod
+    def _split_oversized(docs: list[Document]) -> list[Document]:
+        """Split documents whose text exceeds Milvus VARCHAR max length.
+
+        Args:
+            docs: Input list of LangChain Documents.
+
+        Returns:
+            New list where every document has page_content <= _MILVUS_VARCHAR_MAX.
+        """
+        splitter = RecursiveCharacterTextSplitter(
+            chunk_size=_SAFE_CHUNK_SIZE,
+            chunk_overlap=_CHUNK_OVERLAP,
+        )
+        result: list[Document] = []
+        for doc in docs:
+            if len(doc.page_content) > _MILVUS_VARCHAR_MAX:
+                chunks = splitter.split_documents([doc])
+                result.extend(chunks)
+            else:
+                result.append(doc)
+        return result
+
     def add(self, docs: list[Document]):
         """
         Add LangChain Documents to the vector store.
 
+        Documents whose text exceeds the Milvus VARCHAR limit are automatically
+        split into smaller chunks before insertion.
+
         Args:
             docs: List of LangChain Documents to add.
         """
+        docs = self._split_oversized(docs)
         _ = self.vector_store.add_documents(documents=docs)
 
     def delete(self, namespace: str):
