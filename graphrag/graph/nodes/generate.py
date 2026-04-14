@@ -3,7 +3,6 @@
 from typing import Dict, Optional, List
 from langchain_core.documents import Document
 
-from graphrag.config.prompts import GENERATE_RESPONSE_PROMPT
 from graphrag.core.state import State
 from graphrag.memory.manager import MemoryManager
 from graphrag.utils.logger import get_logger
@@ -14,15 +13,17 @@ logger = get_logger(__name__)
 class GenerateNode:
     """Node for generating responses using LLM."""
 
-    def __init__(self, llm, memory_manager: MemoryManager):
+    def __init__(self, llm, memory_manager: MemoryManager, prompt: str):
         """Initialize the generation node.
 
         Args:
             llm: The language model for generation.
             memory_manager: Memory manager for retrieving conversation history.
+            prompt: The prompt template for response generation.
         """
         self.llm = llm
         self.memory_manager = memory_manager
+        self.prompt = prompt
 
     def __call__(self, state: State) -> Dict:
         """Generate response using LLM based on query and context.
@@ -46,7 +47,7 @@ class GenerateNode:
 
         try:
             response = self.llm.invoke(
-                GENERATE_RESPONSE_PROMPT.format(
+                self.prompt.format(
                     query=query,
                     context=context_str,
                     memory=memory_str,

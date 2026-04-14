@@ -76,6 +76,22 @@ print(f"Answer: {result['response']}")
 print(f"Sources: {len(result['context'])} documents")
 ```
 
+### Custom Prompts
+
+All prompts used by the agent are customizable via `PromptsConfig`. Default prompts are used when no configuration is provided.
+
+```python
+from graphrag import PromptsConfig
+
+custom_prompts = PromptsConfig(
+    generate_response="Your generation prompt with {query}, {context}, {memory}",
+    evaluate_context="Your evaluation prompt with {query}, {context}",
+    refine_query="Your refinement prompt with {history}, {current_question}",
+)
+
+agent = GraphRAG(store=store, llm="gpt-4o-mini", prompts=custom_prompts)
+```
+
 ## Core Components
 
 ### Store (`graphrag.store.Store`)
@@ -155,3 +171,4 @@ result = agent.run(query)          # Process query end-to-end
 ### Agent Parameters
 - `llm`: Model name (gpt-4o-mini, claude-3-sonnet, etc.)
 - `rerank`: Enable/disable Cohere reranking (default: False)
+- `prompts`: `PromptsConfig` instance for custom prompts (default: built-in prompts)

@@ -4,7 +4,6 @@ import json
 from typing import Dict, List
 from langchain_core.documents import Document
 
-from graphrag.config.prompts import EVALUATE_CONTEXT_PROMPT
 from graphrag.core.state import State
 from graphrag.utils.logger import get_logger
 
@@ -14,13 +13,15 @@ logger = get_logger(__name__)
 class EvaluateNode:
     """Node for evaluating and filtering documents based on relevance."""
 
-    def __init__(self, llm):
+    def __init__(self, llm, prompt: str):
         """Initialize the evaluation node.
 
         Args:
             llm: The language model for evaluation.
+            prompt: The prompt template for context evaluation.
         """
         self.llm = llm
+        self.prompt = prompt
 
     def __call__(self, state: State) -> Dict:
         """Evaluate and filter documents based on relevance to query.
@@ -39,9 +40,7 @@ class EvaluateNode:
 
         try:
             evaluation_result = self.llm.invoke(
-                EVALUATE_CONTEXT_PROMPT.format(
-                    query=state["refined_query"], context=docs_text
-                )
+                self.prompt.format(query=state["refined_query"], context=docs_text)
             )
 
             content = evaluation_result.content

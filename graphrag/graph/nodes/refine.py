@@ -1,16 +1,16 @@
 from langchain_core.language_models import BaseChatModel
 from graphrag.core.state import State
 from graphrag.memory.manager import MemoryManager
-from graphrag.config.prompts import REFINE_QUERY_PROMPT
 
 
 class RefineNode:
     """Refine User query."""
 
-    def __init__(self, llm: BaseChatModel, memory_manager: MemoryManager):
+    def __init__(self, llm: BaseChatModel, memory_manager: MemoryManager, prompt: str):
         """Initialize the RefineNode."""
         self.llm = llm
         self.memory_manager = memory_manager
+        self.prompt = prompt
 
     def __call__(self, state: State):
         user_id = state.get("user_id")
@@ -20,7 +20,7 @@ class RefineNode:
             }  # Skip refinement if no user_id
         cache = self.memory_manager.get_or_create(user_id)
         short_memory = cache.short_term_memory()
-        prompt = REFINE_QUERY_PROMPT.format(
+        prompt = self.prompt.format(
             history=short_memory
             if short_memory
             else "No previous conversation history.",

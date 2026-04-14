@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 
 from graphrag.core.state import State
 from graphrag.store.store import Store
+from graphrag.config.prompts import PromptsConfig
 from graphrag.memory.manager import MemoryManager
 from graphrag.graph.nodes import (
     RetrieveNode,
@@ -28,6 +29,7 @@ class GraphRAG:
         self,
         store: Store,
         llm: str,
+        prompts: PromptsConfig,
         rerank: bool = False,
         draw_thinking_level: str = "low",
         draw_model: str = "gemini-3-flash-preview",
@@ -42,24 +44,32 @@ class GraphRAG:
             draw_thinking_level: The thinking level for the TechDraw agent.
             draw_model: The Gemini model to use for the TechDraw agent.
             draw_threshold_inches: Minimum dimension to trigger zooming analysis.
+            prompts: Custom prompts configuration (required).
         """
         self.store = store
         self.llm = init_chat_model(model=llm)
+        self.prompts = prompts
         self.memory_manager = MemoryManager(uri=self.store.uri)
         self.memory_manager._clear_redis()  # Clear short-term memory on initialization
 
         # Initialize nodes
         self.refine_node = RefineNode(
-            init_chat_model(model="gpt-4.1-nano", temperature=0.5), self.memory_manager
+            init_chat_model(model="gpt-4.1-nano", temperature=0.5),
+            self.memory_manager,
+            prompt=self.prompts.refine_query,
         )
         self.retrieve_node = RetrieveNode(store, rerank)
-        self.evaluate_node = EvaluateNode(self.llm)
+        self.evaluate_node = EvaluateNode(
+            self.llm, prompt=self.prompts.evaluate_context
+        )
         self.draw_node = DrawNode(
             thinking_level=draw_thinking_level,
             model=draw_model,
             threshold_inches=draw_threshold_inches,
         )
-        self.generate_node = GenerateNode(self.llm, self.memory_manager)
+        self.generate_node = GenerateNode(
+            self.llm, self.memory_manager, prompt=self.prompts.generate_response
+        )
 
         self.graph = self._compile_graph()
 
