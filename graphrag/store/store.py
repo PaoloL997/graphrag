@@ -130,7 +130,6 @@ class Store:
             collection: The collection name.
             k: The number of documents to retrieve. Defaults to 4.
             embedding_model: The embedding model to use. Defaults to "text-embedding-3-small".
-            reranker: Whether to use a reranker. Defaults to False.
 
         Raises:
             ConnectionError: If connection to Milvus fails.
@@ -146,61 +145,54 @@ class Store:
             embedding_model if embedding_model else "text-embedding-3-small"
         )
 
-        self._connect()
-        self._initialize_database()
+        self._ensure_database()
 
         self.embed = OpenAIEmbeddings(model=self.embedding_model)
         self.vector_store = self._create_vstore()
 
         self.reranker = CohereReranker(top_n=self.k)
 
-    def _connect(self):
-        """Connect to Milvus instance.
+    def _ensure_database(self):
+        """Ensure the target database exists using a temporary connection.
+
+        Uses a separate alias to avoid interfering with langchain_milvus
+        connection management.
 
         Raises:
             ConnectionError: If connection to Milvus fails.
+            RuntimeError: If database initialization fails.
         """
+        alias = "_store_setup"
         try:
             host = self.uri.split("://")[1].split(":")[0]
             port = int(self.uri.split(":")[-1])
-            connections.connect(host=host, port=port)
+            connections.connect(alias=alias, host=host, port=port)
         except Exception as e:
             raise ConnectionError(
                 f"Failed to connect to Milvus at {self.uri}: {e}"
             ) from e
-
-    def _initialize_database(self):
-        """Initialize the database.
-
-        Raises:
-            RuntimeError: If database initialization fails.
-        """
         try:
-            if self.database in db.list_database():
-                db.using_database(self.database)
-            else:
-                db.create_database(self.database)
+            if self.database not in db.list_database(using=alias):
+                db.create_database(self.database, using=alias)
         except MilvusException as e:
             raise RuntimeError(
                 f"Failed to initialize database {self.database}: {e}"
             ) from e
+        finally:
+            try:
+                connections.disconnect(alias)
+            except Exception:
+                pass
 
     def _create_vstore(self):
-        (
-            """Create and return a vector store.
-        
-        Returns:
-            Milvus: Configured Milvus vector store instance.
-        """
-            ""
-        )
+        """Create and return a vector store."""
         mstore = Milvus(
             embedding_function=self.embed,
             connection_args={"uri": self.uri, "db_name": self.database},
             builtin_function=BM25BuiltInFunction(),
             vector_field=["dense", "sparse"],
             consistency_level="Strong",
-            drop_old=False,  # TODO: vedi se aggiungere come configurabile
+            drop_old=False,
             collection_name=self.collection,
             auto_id=True,
             partition_key_field="namespace",
