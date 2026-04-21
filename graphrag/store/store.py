@@ -14,6 +14,8 @@ from graphrag.store.reranker import CohereReranker
 
 load_dotenv()
 
+logger = logging.getLogger(__name__)
+
 _MILVUS_VARCHAR_MAX = 65535
 _SAFE_CHUNK_SIZE = 60_000
 _CHUNK_OVERLAP = 200
@@ -289,17 +291,16 @@ class Store:
             score: Whether to return scores with the documents. Defaults to False.
 
         Returns:
-            list: List of documents or document-score tuples if score=True.
-                  Each document contains namespace metadata for tracking origin.
+            list: List of documents (or document-score tuples if score=True), or an
+                  empty list if the collection does not exist yet.
         """
-        if score:
-            docs = self.vector_store.similarity_search_with_score(query, k=self.k)
-        else:
-            docs = self.vector_store.similarity_search(
-                query,
-                k=self.k,
-            )
-        return docs
+        try:
+            if score:
+                return self.vector_store.similarity_search_with_score(query, k=self.k)
+            return self.vector_store.similarity_search(query, k=self.k)
+        except MilvusException as e:
+            logger.warning("Retrieve failed on collection %s: %s", self.collection, e)
+            return []
 
     def retrieve_with_reranker(self, query: str):
         """Retrieve documents and rerank them using the Cohere Reranker.
@@ -308,7 +309,8 @@ class Store:
             query: The query string (must be a string, not a list).
 
         Returns:
-            list: Reranked list of documents.
+            list: Reranked list of documents, or an empty list if the collection
+                  does not exist yet.
         """
         if isinstance(query, list):
             query = str(query[0]) if query else ""
@@ -316,9 +318,16 @@ class Store:
         if not self.reranker:
             self.reranker = CohereReranker(top_n=self.k)
 
-        docs = self.vector_store.similarity_search(query, k=self.k * 4)
-        reranked_docs = self.reranker.rerank(query, docs)
-        return reranked_docs
+        try:
+            docs = self.vector_store.similarity_search(query, k=self.k * 4)
+        except MilvusException as e:
+            logger.warning(
+                "Retrieve-with-reranker failed on collection %s: %s",
+                self.collection,
+                e,
+            )
+            return []
+        return self.reranker.rerank(query, docs)
 
     def query(self, expression: str, fields: list | None = None, limit: int = 10):
         collection = Collection(self.collection)
