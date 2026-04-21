@@ -187,7 +187,16 @@ class Store:
                 pass
 
     def _create_vstore(self):
-        """Create and return a vector store."""
+        """Create and return a vector store.
+
+        `langchain_milvus.Milvus` uses `MilvusClient` for data operations, but
+        internally falls back to `pymilvus.orm.Collection` (e.g. inside
+        ``_extract_fields``) which requires a connection registered in
+        ``pymilvus.orm.connections``. We register it explicitly here under the
+        same alias the vector store will use; without this, the first
+        ``add_documents`` call on a not-yet-existing collection raises
+        ``ConnectionNotExistException``.
+        """
         mstore = Milvus(
             embedding_function=self.embed,
             connection_args={"uri": self.uri, "db_name": self.database},
@@ -199,6 +208,21 @@ class Store:
             auto_id=True,
             partition_key_field="namespace",
         )
+        try:
+            host = self.uri.split("://")[1].split(":")[0]
+            port = int(self.uri.split(":")[-1])
+            connections.connect(
+                alias=mstore.alias,
+                host=host,
+                port=port,
+                db_name=self.database,
+            )
+        except Exception as e:
+            logger.warning(
+                "Failed to register ORM connection for alias %s: %s",
+                mstore.alias,
+                e,
+            )
         return mstore
 
     @staticmethod
