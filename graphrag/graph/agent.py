@@ -151,7 +151,7 @@ class GraphRAG:
             return final_state
 
         except Exception as e:
-            logger.error("Error during workflow execution: %s", e)
+            logger.error("Error during workflow execution: %s", e, exc_info=True)
             return {
                 "query": query,
                 "refined_query": None,
