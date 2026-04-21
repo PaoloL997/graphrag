@@ -42,12 +42,13 @@ class UserMemory:
 
     def add(self, query: str, response: str) -> None:
         page_content = f"QUERY: {query}\nRESPONSE: {response}"
-        # Cast esplicito del risultato
         length = cast(int, self.short_memory_store.llen(self.user))
         if length >= LEN_SHORT_MEMORY:
             oldest = cast(str, self.short_memory_store.lindex(self.user, 0))
             if oldest:
-                document = Document(page_content=oldest)
+                document = Document(
+                    page_content=oldest, metadata={"namespace": self.user}
+                )
                 self.long_memory_store.add([document])
         self.short_memory_store.rpush(self.user, page_content)
         self.short_memory_store.ltrim(self.user, -LEN_SHORT_MEMORY, -1)
@@ -89,7 +90,10 @@ class UserMemory:
             List[str], self.short_memory_store.lrange(self.user, 0, -1)
         )
         if conversations:
-            documents = [Document(page_content=entry) for entry in conversations]
+            documents = [
+                Document(page_content=entry, metadata={"namespace": self.user})
+                for entry in conversations
+            ]
             self.long_memory_store.add(documents)
 
     def delete(self) -> None:
