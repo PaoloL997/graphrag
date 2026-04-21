@@ -63,9 +63,12 @@ class UserMemory:
         return None
 
     def long_term_memory(self, query: str) -> str | None:
-        results = self.long_memory_store.retrieve_with_reranker(query)
-        if results:
-            return "\n".join([doc.page_content for doc in results])
+        try:
+            results = self.long_memory_store.retrieve_with_reranker(query)
+            if results:
+                return "\n".join([doc.page_content for doc in results])
+        except Exception:
+            pass
         return None
 
     def get(self, query: str) -> str | None:
