@@ -83,6 +83,15 @@ class UserMemory:
             combined_memory += f"Long-term memory:\n{long_memory}\n\n"
         return combined_memory if combined_memory else None
 
+    def flush_to_long_memory(self) -> None:
+        """Flush all short-term memory entries to long-term (Milvus) storage."""
+        conversations = cast(
+            List[str], self.short_memory_store.lrange(self.user, 0, -1)
+        )
+        if conversations:
+            documents = [Document(page_content=entry) for entry in conversations]
+            self.long_memory_store.add(documents)
+
     def delete(self) -> None:
         """Delete the user's memory collection."""
         try:
