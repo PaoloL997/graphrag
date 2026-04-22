@@ -14,6 +14,8 @@ from graphrag.store.reranker import CohereReranker
 
 load_dotenv()
 
+logger = logging.getLogger(__name__)
+
 _MILVUS_VARCHAR_MAX = 65535
 _SAFE_CHUNK_SIZE = 60_000
 _CHUNK_OVERLAP = 200
@@ -130,7 +132,6 @@ class Store:
             collection: The collection name.
             k: The number of documents to retrieve. Defaults to 4.
             embedding_model: The embedding model to use. Defaults to "text-embedding-3-small".
-            reranker: Whether to use a reranker. Defaults to False.
 
         Raises:
             ConnectionError: If connection to Milvus fails.
@@ -146,65 +147,82 @@ class Store:
             embedding_model if embedding_model else "text-embedding-3-small"
         )
 
-        self._connect()
-        self._initialize_database()
+        self._ensure_database()
 
         self.embed = OpenAIEmbeddings(model=self.embedding_model)
         self.vector_store = self._create_vstore()
 
         self.reranker = CohereReranker(top_n=self.k)
 
-    def _connect(self):
-        """Connect to Milvus instance.
+    def _ensure_database(self):
+        """Ensure the target database exists using a temporary connection.
+
+        Uses a separate alias to avoid interfering with langchain_milvus
+        connection management.
 
         Raises:
             ConnectionError: If connection to Milvus fails.
+            RuntimeError: If database initialization fails.
         """
+        alias = "_store_setup"
         try:
             host = self.uri.split("://")[1].split(":")[0]
             port = int(self.uri.split(":")[-1])
-            connections.connect(host=host, port=port)
+            connections.connect(alias=alias, host=host, port=port)
         except Exception as e:
             raise ConnectionError(
                 f"Failed to connect to Milvus at {self.uri}: {e}"
             ) from e
-
-    def _initialize_database(self):
-        """Initialize the database.
-
-        Raises:
-            RuntimeError: If database initialization fails.
-        """
         try:
-            if self.database in db.list_database():
-                db.using_database(self.database)
-            else:
-                db.create_database(self.database)
+            if self.database not in db.list_database(using=alias):
+                db.create_database(self.database, using=alias)
         except MilvusException as e:
             raise RuntimeError(
                 f"Failed to initialize database {self.database}: {e}"
             ) from e
+        finally:
+            try:
+                connections.disconnect(alias)
+            except Exception:
+                pass
 
     def _create_vstore(self):
-        (
-            """Create and return a vector store.
-        
-        Returns:
-            Milvus: Configured Milvus vector store instance.
+        """Create and return a vector store.
+
+        `langchain_milvus.Milvus` uses `MilvusClient` for data operations, but
+        internally falls back to `pymilvus.orm.Collection` (e.g. inside
+        ``_extract_fields``) which requires a connection registered in
+        ``pymilvus.orm.connections``. We register it explicitly here under the
+        same alias the vector store will use; without this, the first
+        ``add_documents`` call on a not-yet-existing collection raises
+        ``ConnectionNotExistException``.
         """
-            ""
-        )
         mstore = Milvus(
             embedding_function=self.embed,
             connection_args={"uri": self.uri, "db_name": self.database},
             builtin_function=BM25BuiltInFunction(),
             vector_field=["dense", "sparse"],
             consistency_level="Strong",
-            drop_old=False,  # TODO: vedi se aggiungere come configurabile
+            drop_old=False,
             collection_name=self.collection,
             auto_id=True,
             partition_key_field="namespace",
         )
+        try:
+            host = self.uri.split("://")[1].split(":")[0]
+            port = int(self.uri.split(":")[-1])
+            connections.connect(
+                alias=mstore.alias,
+                host=host,
+                port=port,
+                db_name=self.database,
+            )
+        except Exception as e:
+            logger.warning(
+                "Failed to register ORM connection for alias %s: %s",
+                mstore.alias,
+                e,
+            )
         return mstore
 
     @staticmethod
@@ -297,17 +315,16 @@ class Store:
             score: Whether to return scores with the documents. Defaults to False.
 
         Returns:
-            list: List of documents or document-score tuples if score=True.
-                  Each document contains namespace metadata for tracking origin.
+            list: List of documents (or document-score tuples if score=True), or an
+                  empty list if the collection does not exist yet.
         """
-        if score:
-            docs = self.vector_store.similarity_search_with_score(query, k=self.k)
-        else:
-            docs = self.vector_store.similarity_search(
-                query,
-                k=self.k,
-            )
-        return docs
+        try:
+            if score:
+                return self.vector_store.similarity_search_with_score(query, k=self.k)
+            return self.vector_store.similarity_search(query, k=self.k)
+        except MilvusException as e:
+            logger.warning("Retrieve failed on collection %s: %s", self.collection, e)
+            return []
 
     def retrieve_with_reranker(self, query: str):
         """Retrieve documents and rerank them using the Cohere Reranker.
@@ -316,7 +333,8 @@ class Store:
             query: The query string (must be a string, not a list).
 
         Returns:
-            list: Reranked list of documents.
+            list: Reranked list of documents, or an empty list if the collection
+                  does not exist yet.
         """
         if isinstance(query, list):
             query = str(query[0]) if query else ""
@@ -324,9 +342,16 @@ class Store:
         if not self.reranker:
             self.reranker = CohereReranker(top_n=self.k)
 
-        docs = self.vector_store.similarity_search(query, k=self.k * 4)
-        reranked_docs = self.reranker.rerank(query, docs)
-        return reranked_docs
+        try:
+            docs = self.vector_store.similarity_search(query, k=self.k * 4)
+        except MilvusException as e:
+            logger.warning(
+                "Retrieve-with-reranker failed on collection %s: %s",
+                self.collection,
+                e,
+            )
+            return []
+        return self.reranker.rerank(query, docs)
 
     def query(self, expression: str, fields: list | None = None, limit: int = 10):
         collection = Collection(self.collection)

@@ -1,5 +1,6 @@
 """Agent module for GraphRAG workflow orchestration."""
 
+import atexit
 from typing import Optional, Dict
 from langgraph.graph import StateGraph, END
 from langchain.chat_models import init_chat_model
@@ -45,12 +46,22 @@ class GraphRAG:
             draw_model: The Gemini model to use for the TechDraw agent.
             draw_threshold_inches: Minimum dimension to trigger zooming analysis.
             prompts: Custom prompts configuration (required).
+
+        Memory lifecycle
+        ----------------
+        On init, Redis is cleared to start the session with a clean short-term
+        memory.  An ``atexit`` hook is registered so that on graceful process
+        shutdown all short-term memory is flushed to Milvus (long-term) before
+        Redis is wiped.  In a web-server context, per-session flushing is handled
+        externally (e.g. in ``initialize_agent``) since the process never exits
+        between user sessions.
         """
         self.store = store
         self.llm = init_chat_model(model=llm)
         self.prompts = prompts
         self.memory_manager = MemoryManager(uri=self.store.uri)
         self.memory_manager._clear_redis()  # Clear short-term memory on initialization
+        atexit.register(self.memory_manager.shutdown)  # Flush to Milvus on exit
 
         # Initialize nodes
         self.refine_node = RefineNode(
@@ -140,7 +151,7 @@ class GraphRAG:
             return final_state
 
         except Exception as e:
-            logger.error("Error during workflow execution: %s", e)
+            logger.error("Error during workflow execution: %s", e, exc_info=True)
             return {
                 "query": query,
                 "refined_query": None,
