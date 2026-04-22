@@ -42,13 +42,10 @@ class UserMemory:
 
     def add(self, query: str, response: str) -> None:
         page_content = f"QUERY: {query}\nRESPONSE: {response}"
-        # Cast esplicito del risultato
-        length = cast(int, self.short_memory_store.llen(self.user))
-        if length >= LEN_SHORT_MEMORY:
-            oldest = cast(str, self.short_memory_store.lindex(self.user, 0))
-            if oldest:
-                document = Document(page_content=oldest)
-                self.long_memory_store.add([document])
+        document = Document(
+            page_content=page_content, metadata={"namespace": self.user}
+        )
+        self.long_memory_store.add([document])
         self.short_memory_store.rpush(self.user, page_content)
         self.short_memory_store.ltrim(self.user, -LEN_SHORT_MEMORY, -1)
 
