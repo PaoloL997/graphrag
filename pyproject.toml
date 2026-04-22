@@ -19,7 +19,7 @@ cohere = "^5.20.0"
 langchain-cohere = "^0.5.0"
 transformers = "^4.57.3"
 techdraw = {git = "git@github.com:PaoloL997/techdraw.git", rev = "main"}
-redis = ">=5.0.0,<8.0.0"
+redis = ">=4.5.6,<6.5"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
