@@ -83,23 +83,13 @@ class UserMemory:
             combined_memory += f"Long-term memory:\n{long_memory}\n\n"
         return combined_memory if combined_memory else None
 
-    def flush_to_long_memory(self) -> None:
-        """Flush all short-term memory entries to long-term (Milvus) storage.
+    def clear_short_memory(self) -> None:
+        """Clear short-term (Redis) memory.
 
-        After a successful flush, the corresponding Redis list is cleared so
-        the same entries are not flushed again if the process keeps running.
+        Since add() already writes every interaction to Milvus (write-through),
+        there is nothing to persist here. We only need to wipe Redis to avoid
+        stale entries accumulating across sessions.
         """
-        conversations = cast(
-            List[str], self.short_memory_store.lrange(self.user, 0, -1)
-        )
-        if not conversations:
-            return
-        documents = [
-            Document(page_content=entry, metadata={"namespace": self.user})
-            for entry in conversations
-        ]
-        self.long_memory_store.add(documents)
-        # Clear already-persisted entries from Redis to avoid re-flushing.
         self.short_memory_store.delete(self.user)
 
     def delete(self) -> None:

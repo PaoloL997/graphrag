@@ -75,13 +75,17 @@ class MemoryManager:
             logger.error("Error saving to memory for user %s: %s", user_id, e)
 
     def flush_all_to_long_memory(self) -> None:
-        """Flush all short-term memory for all users to long-term (Milvus) storage."""
+        """Clear short-term memory for all users.
+
+        Since every interaction is already persisted to Milvus via write-through
+        in UserMemory.add(), this only needs to wipe Redis.
+        """
         for user_id, memory in self._memory_cache.items():
             try:
-                memory.flush_to_long_memory()
-                logger.info("Flushed memory to Milvus for user: %s", user_id)
+                memory.clear_short_memory()
+                logger.info("Cleared short-term memory for user: %s", user_id)
             except Exception as e:
-                logger.error("Error flushing memory for user %s: %s", user_id, e)
+                logger.error("Error clearing short memory for user %s: %s", user_id, e)
 
     def shutdown(self) -> None:
         """Flush all short-term memory to long-term storage, then clear Redis."""
